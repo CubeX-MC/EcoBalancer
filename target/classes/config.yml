@@ -1,0 +1,5 @@
+check-time: "01:00"  # 格式为 HH:mm
+inactive-days-to-deduct: 50  # 未上线扣款开始的天数
+deduction-rate: 0.01  # 扣款比例
+inactive-days-to-clear: 500  # 未上线清空余额的天数
+
