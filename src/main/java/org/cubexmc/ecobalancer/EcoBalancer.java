@@ -3,27 +3,33 @@ package org.cubexmc.ecobalancer;
 import net.milkbowl.vault.chat.Chat;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.permission.Permission;
-
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.cubexmc.ecobalancer.commands.CheckAllCommand;
 import org.cubexmc.ecobalancer.commands.CheckPlayerCommand;
 import org.cubexmc.ecobalancer.commands.HelpCommand;
 
-import java.util.UUID;
-import java.util.Calendar;
+import java.util.*;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.logging.FileHandler;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 public final class EcoBalancer extends JavaPlugin {
 
     private static Economy econ = null;
     private static Permission perms = null;
     private static Chat chat = null;
+    private boolean deductBasedOnTime;
     private int inactiveDaysToDeduct;
-    private double deductionPercentage;
+    private TreeMap<Integer, Double> taxBrackets = new TreeMap<>();
     private int inactiveDaysToClear;
+    private Logger fileLogger = Logger.getLogger("EcoBalancerFileLogger");
+    private FileHandler fileHandler;
 
     @Override
     public void onEnable() {
@@ -40,9 +46,27 @@ public final class EcoBalancer extends JavaPlugin {
         int minute = Integer.parseInt(checkTime.split(":")[1]);
         scheduleCheckAll(hourOfDay, minute);
         // deduction setting
+        deductBasedOnTime = getConfig().getBoolean("deduct-based-on-time", false);
         inactiveDaysToDeduct = getConfig().getInt("inactive-days-to-deduct", 50);
-        deductionPercentage = getConfig().getDouble("deduction-percentage", 1);
+        List<Map<?, ?>> rawTaxBrackets = getConfig().getMapList("tax-brackets");
+
+        for (Map<?, ?> bracket : rawTaxBrackets) {
+            Integer threshold = bracket.get("threshold") == null ? Integer.MAX_VALUE : (Integer) bracket.get("threshold");
+            Double rate = (Double) bracket.get("rate");
+            taxBrackets.put(threshold, rate);
+        }
+
         inactiveDaysToClear = getConfig().getInt("inactive-days-to-clear", 500);
+
+        try {
+            FileHandler fileHandler = new FileHandler(getDataFolder() + File.separator + "EcoBalancer.log", true);
+            fileHandler.setFormatter(new SimpleFormatter());
+            fileLogger.addHandler(fileHandler);
+            fileLogger.setUseParentHandlers(false); // 不将日志转发到父处理器，即不在控制台输出
+        } catch (IOException e) {
+            getLogger().severe("Could not setup file logger for EcoBalancer");
+            e.printStackTrace();
+        }
 
         getCommand("help").setExecutor(new HelpCommand());
         getCommand("checkall").setExecutor(new CheckAllCommand(this));
@@ -53,6 +77,7 @@ public final class EcoBalancer extends JavaPlugin {
     @Override
     public void onDisable() {
         // Plugin shutdown logic
+        fileHandler.close();
         getLogger().info("EcoBalancer disabled.");
     }
 
@@ -78,26 +103,44 @@ public final class EcoBalancer extends JavaPlugin {
     public void checkBalance(long currentTime, OfflinePlayer player, boolean print) {
         UUID playerId = player.getUniqueId();
         long lastPlayed = player.getLastPlayed();
-        double balance = econ.hasAccount(player) ? econ.getBalance(player) : 0;
-
-        // 计算玩家离线天数
         long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
-        if (balance < 0) {
-            econ.depositPlayer(player, -1*balance);
-        } else {
-            if (daysOffline > inactiveDaysToClear) {
-                // 清除超过500天未上线的玩家
-                econ.withdrawPlayer(player, balance);
-            } else if (daysOffline > inactiveDaysToDeduct) {
-                // 对于超过50天未上线的玩家，扣除其1%的余额
-                double deduction = balance * deductionPercentage;
-                econ.withdrawPlayer(player, deduction);
+        double balance = econ.hasAccount(player) ? econ.getBalance(player) : 0;
+        Double deductionRate = 0.0;
+
+        Map.Entry<Integer, Double> entry = taxBrackets.higherEntry((int) balance);
+        if (entry != null) {
+            deductionRate = entry.getValue();
+        }
+        // If no bracket is found (which should not happen because we use Integer.MAX_VALUE for the highest bracket), use a default rate
+        if (deductionRate == null) {
+            deductionRate = 0.0; // defaultRate should be defined somewhere in your class
+        }
+
+        if (deductBasedOnTime) {
+            // 计算玩家离线天数
+            if (balance < 0) {
+                econ.depositPlayer(player, -1 * balance);
+                fileLogger.info("[Negative Bal] Depositing " + (-1 * balance) + " to " + player.getName() + " to bring balance to 0.");
+            } else {
+                if (daysOffline > inactiveDaysToClear) {
+                    // 清除超过500天未上线的玩家
+                    econ.withdrawPlayer(player, balance);
+                    fileLogger.info("[>500] Depositing " + (-1 * balance) + " to " + player.getName() + " to bring balance to 0.");
+                } else if (daysOffline > inactiveDaysToDeduct) {
+                    // 对于超过50天未上线的玩家，按税率扣除
+                    double deduction = balance * deductionRate;
+                    econ.withdrawPlayer(player, deduction);
+                    fileLogger.info("[<500] Withdrawing " + deduction + " from " + player.getName() + " for inactivity.");
+                }
             }
+        } else {
+            double deduction = balance * deductionRate;
+            econ.withdrawPlayer(player, deduction);
+            fileLogger.info("Withdrawing " + deduction + " from " + player.getName() + " for inactivity.");
         }
         if (print) {
             getLogger().info("Player: " + player.getName() + ", UUID: " + playerId
-                + ", Last Played: " + lastPlayed + ", Balance: " + balance
-                + ", Days Offline: " + daysOffline);
+                + ", Offline: " + daysOffline + ", Balance: " + balance);
         }
     }
 
@@ -121,19 +164,13 @@ public final class EcoBalancer extends JavaPlugin {
 
         long millisUntilOneAM = oneAM.getTimeInMillis() - now.getTimeInMillis();
         long ticksUntilOneAM = millisUntilOneAM / 50; // 每个tick代表50毫秒
-        // 注意：你需要编写代码来正确计算这个值
 
         Bukkit.getScheduler().scheduleSyncRepeatingTask(this, new Runnable() {
             @Override
             public void run() {
-                int cnt = 0;
-                boolean print = false;
                 long currentTime = System.currentTimeMillis();
                 for (OfflinePlayer player : Bukkit.getOfflinePlayers()) {
-                    if (cnt < 10) {
-                        print = true;
-                    }
-                    checkBalance(currentTime, player, print);
+                    checkBalance(currentTime, player, false);
                 }
             }
         }, ticksUntilOneAM, oneDayTicks);

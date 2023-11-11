@@ -38,8 +38,10 @@ public class CheckPlayerCommand implements CommandExecutor {
     }
 
     private void checkPlayer(String playerName) {
+        System.out.println("checkPlayer()");
         long currentTime = System.currentTimeMillis();
         OfflinePlayer player = Bukkit.getOfflinePlayer(playerName);
+        System.out.println("player == null?" + (player == null));
         plugin.checkBalance(currentTime, player, true);
     }
 }

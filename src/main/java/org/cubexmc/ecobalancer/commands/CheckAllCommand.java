@@ -29,23 +29,44 @@ public class CheckAllCommand implements CommandExecutor {
             }
             if (args.length == 0) {
                 player.sendMessage(ChatColor.GREEN + "CHECKING ALL!");
-                checkAll();
+                checkAll(sender);
             }
         }
 
         return true;
     }
 
-    public void checkAll() {
-        int cnt = 0;
-        boolean print = false;
-        Economy economy = EcoBalancer.getEconomy();
-        long currentTime = System.currentTimeMillis();
-        for (OfflinePlayer player : Bukkit.getOfflinePlayers()) {
-            if (cnt < 10) {
-                print = true;
+    public void checkAll(CommandSender sender) {
+        final long currentTime = System.currentTimeMillis();
+        final OfflinePlayer[] players = Bukkit.getOfflinePlayers();
+        final int batchSize = 100; // Number of players to process at once
+        final int delay = 10; // Delay in ticks between batches (20 ticks = 1 second)
+
+        class BatchRunnable implements Runnable {
+            private int index = 0;
+
+            @Override
+            public void run() {
+                int start = index;
+                int end = Math.min(index + batchSize, players.length);
+                for (int i = index; i < end; i++) {
+                    OfflinePlayer player = players[i];
+                    plugin.checkBalance(currentTime, player, false);
+                }
+                index += batchSize;
+                // Send a message to the sender after each batch
+                Bukkit.getScheduler().runTask(plugin, () -> sender.sendMessage(ChatColor.GREEN + "Processed " + (end - start) + " players. Total processed: " + end));
+                if (index < players.length) {
+                    // Schedule next batch
+                    Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, this, delay);
+                } else {
+                    // All players have been processed, notify the sender
+                    Bukkit.getScheduler().runTask(plugin, () -> sender.sendMessage(ChatColor.GREEN + "All balances have been checked."));
+                }
             }
-            plugin.checkBalance(currentTime, player, print);
         }
+
+        // Start the first batch
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, new BatchRunnable());
     }
 }

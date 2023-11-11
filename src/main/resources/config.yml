@@ -1,5 +1,14 @@
-check-time: "01:00"  # 格式为 HH:mm
+# by CubeX
+check-time: "20:00"  # 格式为 HH:mm
+deduct-based-on-time: true
 inactive-days-to-deduct: 50  # 未上线扣款开始的天数
-deduction-rate: 0.01  # 扣款比例
 inactive-days-to-clear: 500  # 未上线清空余额的天数
+# 按阶级扣税
+tax-brackets:
+  - threshold: 10000
+    rate: 0.001
+  - threshold: 20000
+    rate: 0.002
+  - threshold: null  # No upper limit specified
+    rate: 0.1
 
