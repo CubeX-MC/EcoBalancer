@@ -11,6 +11,7 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.cubexmc.ecobalancer.commands.CheckAllCommand;
 import org.cubexmc.ecobalancer.commands.CheckPlayerCommand;
+import org.cubexmc.ecobalancer.commands.HelpCommand;
 
 import java.util.UUID;
 import java.util.Calendar;
@@ -43,6 +44,7 @@ public final class EcoBalancer extends JavaPlugin {
         deductionPercentage = getConfig().getDouble("deduction-percentage", 1);
         inactiveDaysToClear = getConfig().getInt("inactive-days-to-clear", 500);
 
+        getCommand("help").setExecutor(new HelpCommand());
         getCommand("checkall").setExecutor(new CheckAllCommand(this));
         getCommand("checkplayer").setExecutor(new CheckPlayerCommand(this));
         getLogger().info("EcoBalancer enabled!");
