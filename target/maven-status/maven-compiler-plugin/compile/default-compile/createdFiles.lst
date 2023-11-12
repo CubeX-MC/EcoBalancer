@@ -1,6 +1,5 @@
+org\cubexmc\ecobalancer\EcoBalancer$1BatchRunnable.class
 org\cubexmc\ecobalancer\commands\HelpCommand.class
 org\cubexmc\ecobalancer\EcoBalancer.class
 org\cubexmc\ecobalancer\commands\CheckPlayerCommand.class
 org\cubexmc\ecobalancer\commands\CheckAllCommand.class
-org\cubexmc\ecobalancer\EcoBalancer$1.class
-org\cubexmc\ecobalancer\commands\CheckAllCommand$1BatchRunnable.class

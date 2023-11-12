@@ -24,24 +24,22 @@ public class CheckPlayerCommand implements CommandExecutor {
         if (sender instanceof Player) {
             Player player = (Player) sender;
             if (!player.hasPermission("ecobalancer.check")) {
-                player.sendMessage(ChatColor.RED + "You do not have permission to use this command.");
+                player.sendMessage(ChatColor.RED + "你没有权限使用这个命令。");
                 return true;
             }
             if (args.length == 0) {
-                player.sendMessage(ChatColor.GREEN + "Please enter playername or use /checkall");
+                player.sendMessage(ChatColor.GREEN + "请输入玩家名称或使用/checkall");
             } else {
-                checkPlayer(args[0]);
+                checkPlayer(player, args[0]);
             }
         }
 
         return true;
     }
 
-    private void checkPlayer(String playerName) {
-        System.out.println("checkPlayer()");
+    private void checkPlayer(Player sender, String playerName) {
         long currentTime = System.currentTimeMillis();
-        OfflinePlayer player = Bukkit.getOfflinePlayer(playerName);
-        System.out.println("player == null?" + (player == null));
-        plugin.checkBalance(currentTime, player, true);
+        OfflinePlayer target = Bukkit.getOfflinePlayer(playerName);
+        plugin.checkBalance(sender, currentTime, target, true);
     }
 }

@@ -1,7 +1,7 @@
 name: EcoBalancer
 version: '1.0-SNAPSHOT'
 main: org.cubexmc.ecobalancer.EcoBalancer
-api-version: '1.20'
+api-version: '1.13'
 description: This plugin deducts money from inactive players' accounts using Vault.
 author: angushushu
 website: angushushu.com

@@ -4,7 +4,10 @@ import net.milkbowl.vault.chat.Chat;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.permission.Permission;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.cubexmc.ecobalancer.commands.CheckAllCommand;
@@ -15,9 +18,12 @@ import java.util.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+
+import java.util.stream.Collectors;
 
 public final class EcoBalancer extends JavaPlugin {
 
@@ -30,6 +36,9 @@ public final class EcoBalancer extends JavaPlugin {
     private int inactiveDaysToClear;
     private Logger fileLogger = Logger.getLogger("EcoBalancerFileLogger");
     private FileHandler fileHandler;
+    private String scheduleType;
+    private List<Integer> scheduleDaysOfWeek;
+    private List<Integer> scheduleDatesOfMonth;
 
     @Override
     public void onEnable() {
@@ -40,14 +49,29 @@ public final class EcoBalancer extends JavaPlugin {
         }
 
         saveDefaultConfig();  // 保存默认配置
-        // check time
+        // Load the new scheduling configuration
+        scheduleType = getConfig().getString("schedule.type", "daily");
+        scheduleDaysOfWeek = getConfig().getIntegerList("schedule.days-of-week");
+        scheduleDatesOfMonth = getConfig().getIntegerList("schedule.dates-of-month");
         String checkTime = getConfig().getString("check-time", "01:00");  // 读取配置
         int hourOfDay = Integer.parseInt(checkTime.split(":")[0]);
         int minute = Integer.parseInt(checkTime.split(":")[1]);
-        scheduleCheckAll(hourOfDay, minute);
+        // Determine which scheduling method to use based on the type
+        switch (scheduleType.toLowerCase()) {
+            case "weekly":
+                scheduleWeeklyChecks();
+                break;
+            case "monthly":
+                scheduleMonthlyChecks();
+                break;
+            default:
+                scheduleDailyChecks(hourOfDay, minute);
+                break;
+        }
         // deduction setting
         deductBasedOnTime = getConfig().getBoolean("deduct-based-on-time", false);
         inactiveDaysToDeduct = getConfig().getInt("inactive-days-to-deduct", 50);
+        inactiveDaysToClear = getConfig().getInt("inactive-days-to-clear", 500);
         List<Map<?, ?>> rawTaxBrackets = getConfig().getMapList("tax-brackets");
 
         for (Map<?, ?> bracket : rawTaxBrackets) {
@@ -56,10 +80,8 @@ public final class EcoBalancer extends JavaPlugin {
             taxBrackets.put(threshold, rate);
         }
 
-        inactiveDaysToClear = getConfig().getInt("inactive-days-to-clear", 500);
-
         try {
-            FileHandler fileHandler = new FileHandler(getDataFolder() + File.separator + "EcoBalancer.log", true);
+            fileHandler = new FileHandler(getDataFolder() + File.separator + "EcoBalancer.log", true);
             fileHandler.setFormatter(new SimpleFormatter());
             fileLogger.addHandler(fileHandler);
             fileLogger.setUseParentHandlers(false); // 不将日志转发到父处理器，即不在控制台输出
@@ -100,7 +122,7 @@ public final class EcoBalancer extends JavaPlugin {
         return econ;
     }
 
-    public void checkBalance(long currentTime, OfflinePlayer player, boolean print) {
+    public void checkBalance(Player sender, long currentTime, OfflinePlayer player, boolean print) {
         UUID playerId = player.getUniqueId();
         long lastPlayed = player.getLastPlayed();
         long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
@@ -120,23 +142,41 @@ public final class EcoBalancer extends JavaPlugin {
             // 计算玩家离线天数
             if (balance < 0) {
                 econ.depositPlayer(player, -1 * balance);
-                fileLogger.info("[Negative Bal] Depositing " + (-1 * balance) + " to " + player.getName() + " to bring balance to 0.");
+                if (sender != null) {
+                    sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 的余额置为" + String.format("%.2f", balance) + "。");
+                    sender.sendMessage(ChatColor.GREEN + "已将余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
+                }
+                fileLogger.info("[负额度] 已将 " + player.getName() + " 的余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
             } else {
                 if (daysOffline > inactiveDaysToClear) {
-                    // 清除超过500天未上线的玩家
+                    // 清除超过inactiveDaysToClear天未上线的玩家
                     econ.withdrawPlayer(player, balance);
-                    fileLogger.info("[>500] Depositing " + (-1 * balance) + " to " + player.getName() + " to bring balance to 0.");
+                    if (sender != null) {
+                        sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 已经离线" + daysOffline + "天，极不活跃。");
+                        sender.sendMessage(ChatColor.GREEN + "已将余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
+                    }
+                    fileLogger.info("[及不活跃] 已将 " + player.getName() + " 的余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
                 } else if (daysOffline > inactiveDaysToDeduct) {
                     // 对于超过50天未上线的玩家，按税率扣除
                     double deduction = balance * deductionRate;
                     econ.withdrawPlayer(player, deduction);
-                    fileLogger.info("[<500] Withdrawing " + deduction + " from " + player.getName() + " for inactivity.");
+                    if (sender != null) {
+                        sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 已经离线" + daysOffline + "天，较不活跃。");
+                        sender.sendMessage(ChatColor.GREEN + "已从余额中扣除 " + ChatColor.YELLOW + String.format("%.2f", deduction) + ChatColor.GREEN + "。");
+                    }
+                    fileLogger.info("[较不活跃] 已从 " + player.getName() + " 的余额中扣除 " + String.format("%.2f", deduction) + "。");
+                } else {
+                    if (sender != null) {
+                        sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 仅离线" + daysOffline + "天，较活跃。");
+                    }
                 }
             }
         } else {
             double deduction = balance * deductionRate;
             econ.withdrawPlayer(player, deduction);
-            fileLogger.info("Withdrawing " + deduction + " from " + player.getName() + " for inactivity.");
+            if (sender != null)
+                sender.sendMessage(ChatColor.GREEN + "已从 " + ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 的余额中扣除 " + ChatColor.YELLOW + String.format("%.2f", deduction) + ChatColor.GREEN + "。");
+            fileLogger.info("已从 " + player.getName() + " 的余额中扣除 " + String.format("%.2f", deduction) + "。");
         }
         if (print) {
             getLogger().info("Player: " + player.getName() + ", UUID: " + playerId
@@ -144,35 +184,136 @@ public final class EcoBalancer extends JavaPlugin {
         }
     }
 
-    private void scheduleCheckAll(int hour, int minute) {
-        // 每天调用一次 CheckBalance()
-        long oneDayTicks = 20L * 60 * 60 * 24; // 一天的ticks
+    private long calculateInitialDailyDelay(int hourOfDay, int minute) {
         Calendar now = Calendar.getInstance();
-        Calendar oneAM = Calendar.getInstance();
+        Calendar nextCheck = (Calendar) now.clone();
+        nextCheck.set(Calendar.HOUR_OF_DAY, hourOfDay);
+        nextCheck.set(Calendar.MINUTE, minute);
+        nextCheck.set(Calendar.SECOND, 0);
+        nextCheck.set(Calendar.MILLISECOND, 0);
 
-        // 设置为明天的1AM
-        oneAM.set(Calendar.HOUR_OF_DAY, hour);
-        oneAM.set(Calendar.MINUTE, minute);
-        oneAM.set(Calendar.SECOND, 0);
-        oneAM.set(Calendar.MILLISECOND, 0);
-        oneAM.add(Calendar.DAY_OF_MONTH, 1);
-
-        // 如果当前时间已经超过1AM，则再加一天
-        if (now.after(oneAM)) {
-            oneAM.add(Calendar.DAY_OF_MONTH, 1);
+        // If the next check time is before the current time, add one day
+        if (nextCheck.before(now)) {
+            nextCheck.add(Calendar.DAY_OF_MONTH, 1);
         }
 
-        long millisUntilOneAM = oneAM.getTimeInMillis() - now.getTimeInMillis();
-        long ticksUntilOneAM = millisUntilOneAM / 50; // 每个tick代表50毫秒
+        return (nextCheck.getTimeInMillis() - now.getTimeInMillis()) / 50; // Ticks until the next check
+    }
 
-        Bukkit.getScheduler().scheduleSyncRepeatingTask(this, new Runnable() {
+    private long calculateInitialWeeklyDelay() {
+        Calendar now = Calendar.getInstance();
+        int today = now.get(Calendar.DAY_OF_WEEK);
+        int daysUntilNextCheck = scheduleDaysOfWeek.stream()
+                .sorted()
+                .filter(dayOfWeek -> dayOfWeek >= today)
+                .findFirst()
+                .orElse(scheduleDaysOfWeek.get(0)) - today;
+
+        // If the next check date is in the next week
+        if (daysUntilNextCheck < 0) {
+            daysUntilNextCheck += 7; // days left in the current week
+        }
+
+        Calendar nextCheck = (Calendar) now.clone();
+        nextCheck.add(Calendar.DAY_OF_WEEK, daysUntilNextCheck);
+        nextCheck.set(Calendar.HOUR_OF_DAY, 0);
+        nextCheck.set(Calendar.MINUTE, 0);
+        nextCheck.set(Calendar.SECOND, 0);
+        nextCheck.set(Calendar.MILLISECOND, 0);
+
+        return (nextCheck.getTimeInMillis() - now.getTimeInMillis()) / 50; // Ticks until the next check
+    }
+
+    private long calculateInitialMonthlyDelay() {
+        Calendar now = Calendar.getInstance();
+        int dayOfMonth = now.get(Calendar.DAY_OF_MONTH);
+        int daysUntilNextCheck = scheduleDatesOfMonth.stream()
+                .filter(date -> date >= dayOfMonth)
+                .findFirst()
+                .orElse(scheduleDatesOfMonth.get(0)) - dayOfMonth;
+
+        // If the next check date is in the next month
+        if (daysUntilNextCheck < 0) {
+            daysUntilNextCheck += now.getActualMaximum(Calendar.DAY_OF_MONTH); // days left in the current month
+        }
+
+        Calendar nextCheck = (Calendar) now.clone();
+        nextCheck.add(Calendar.DAY_OF_MONTH, daysUntilNextCheck);
+        nextCheck.set(Calendar.HOUR_OF_DAY, 0);
+        nextCheck.set(Calendar.MINUTE, 0);
+        nextCheck.set(Calendar.SECOND, 0);
+        nextCheck.set(Calendar.MILLISECOND, 0);
+
+        return (nextCheck.getTimeInMillis() - now.getTimeInMillis()) / 50; // Ticks until the next check
+    }
+
+    private void scheduleDailyChecks(int hourOfDay, int minute) {
+        // Calculate initial delay
+        long initialDelay = calculateInitialDailyDelay(hourOfDay, minute);
+        long ticksPerDay = 20L * 60 * 60 * 24;
+
+        Bukkit.getScheduler().scheduleSyncRepeatingTask(this, () -> {
+            // Your daily check code here
+            checkAll(null); // Replace null with the actual sender, if available
+        }, initialDelay, ticksPerDay); // Run task every day
+    }
+    private void scheduleWeeklyChecks() {
+        long ticksPerWeek = 20L * 60 * 60 * 24 * 7;
+        Bukkit.getScheduler().scheduleSyncRepeatingTask(this, () -> {
+            Calendar now = Calendar.getInstance();
+            int today = now.get(Calendar.DAY_OF_WEEK);
+            if (scheduleDaysOfWeek.contains(today)) {
+                checkAll(null); // Replace null with the actual sender, if available
+            }
+        }, calculateInitialWeeklyDelay(), ticksPerWeek); // Adjust delay for weekly
+    }
+
+    private void scheduleMonthlyChecks() {
+        long ticksPerMonth = 20L * 60 * 60 * 24 * 30; // Rough approximation
+        Bukkit.getScheduler().scheduleSyncRepeatingTask(this, () -> {
+            Calendar now = Calendar.getInstance();
+            int today = now.get(Calendar.DATE);
+            if (scheduleDatesOfMonth.contains(today)) {
+                checkAll(null); // Replace null with the actual sender, if available
+            }
+        }, calculateInitialMonthlyDelay(), ticksPerMonth); // Adjust for monthly
+    }
+
+    public void checkAll(CommandSender sender) {
+        final long currentTime = System.currentTimeMillis();
+        final OfflinePlayer[] players = Bukkit.getOfflinePlayers();
+        final int batchSize = 100; // Number of players to process at once
+        final int delay = 10; // Delay in ticks between batches (20 ticks = 1 second)
+
+        class BatchRunnable implements Runnable {
+            private int index = 0;
+
             @Override
             public void run() {
-                long currentTime = System.currentTimeMillis();
-                for (OfflinePlayer player : Bukkit.getOfflinePlayers()) {
-                    checkBalance(currentTime, player, false);
+                int start = index;
+                int end = Math.min(index + batchSize, players.length);
+                for (int i = index; i < end; i++) {
+                    OfflinePlayer player = players[i];
+                    checkBalance(null, currentTime, player, false);
+                }
+                index += batchSize;
+                if (sender != null) {
+                    // Send a message to the sender after each batch
+                    Bukkit.getScheduler().runTask(EcoBalancer.this, () -> sender.sendMessage(ChatColor.GRAY + "处理了" + (end - start) + "个玩家，共处理：" + end));
+                } else {
+                    getLogger().info("处理了" + (end - start) + "个玩家，共处理：" + end);
+                }
+                if (index < players.length) {
+                    // Schedule next batch
+                    Bukkit.getScheduler().runTaskLaterAsynchronously(EcoBalancer.this, this, delay);
+                } else {
+                    // All players have been processed, notify the sender
+                    Bukkit.getScheduler().runTask(EcoBalancer.this, () -> sender.sendMessage(ChatColor.GREEN + "所有玩家都已被洗劫。"));
                 }
             }
-        }, ticksUntilOneAM, oneDayTicks);
+        }
+
+        // Start the first batch
+        Bukkit.getScheduler().runTaskAsynchronously(this, new BatchRunnable());
     }
 }
