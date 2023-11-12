@@ -14,7 +14,7 @@ check all offline players and reduce or clean balance based on configuration
 针对单一玩家进行余额查处<br>
 check single offline player and reduce or clean balance based on configuration
 
-### 配置
+### 配置 config
 ```
 check-time: "20:00"  # 格式为 HH:mm
 check-schedule:
