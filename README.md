@@ -1,6 +1,10 @@
 # EcoBalancer
 该插件用于伤害方块叉服务器统治阶级与玩家之间的感情<br>
-Brutal punishment toward inactive players of CubeX
+前置插件：Vault<br>
+理论支持1.12-1.20（只在1.19和1.20测试过）<br>
+Brutal punishment toward inactive players of CubeX<br>
+prerequisite: Vault<br>
+Theoretically support 1.12-1.20 (only tested on 1.19 & 1.20)
 
 ### /checkall
 遍历并清洗全部离线玩家的余额<br>
@@ -10,7 +14,7 @@ check all offline players and reduce or clean balance based on configuration
 针对单一玩家进行余额查处<br>
 check single offline player and reduce or clean balance based on configuration
 
-### 配置
+### 配置 config
 ```
 check-time: "20:00"  # 格式为 HH:mm
 check-schedule:
