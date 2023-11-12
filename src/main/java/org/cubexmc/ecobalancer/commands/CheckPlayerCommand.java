@@ -23,7 +23,7 @@ public class CheckPlayerCommand implements CommandExecutor {
     public boolean onCommand(CommandSender sender, Command command, String s, String[] args) {
         if (sender instanceof Player) {
             Player player = (Player) sender;
-            if (!player.hasPermission("ecobalancer.check")) {
+            if (!player.hasPermission("ecobalancer.admin")) {
                 player.sendMessage(ChatColor.RED + "你没有权限使用这个命令。");
                 return true;
             }
@@ -32,12 +32,18 @@ public class CheckPlayerCommand implements CommandExecutor {
             } else {
                 checkPlayer(player, args[0]);
             }
+        } else if (sender.hasPermission("ecobalancer.admin")) {
+            if (args.length == 0) {
+                sender.sendMessage(ChatColor.GREEN + "请输入玩家名称或使用/checkall");
+            } else {
+                checkPlayer(sender, args[0]);
+            }
         }
 
         return true;
     }
 
-    private void checkPlayer(Player sender, String playerName) {
+    private void checkPlayer(CommandSender sender, String playerName) {
         long currentTime = System.currentTimeMillis();
         OfflinePlayer target = Bukkit.getOfflinePlayer(playerName);
         plugin.checkBalance(sender, currentTime, target, true);

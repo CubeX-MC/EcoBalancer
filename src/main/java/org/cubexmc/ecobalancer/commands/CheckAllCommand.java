@@ -23,12 +23,17 @@ public class CheckAllCommand implements CommandExecutor {
     public boolean onCommand(CommandSender sender, Command command, String s, String[] args) {
         if (sender instanceof Player) {
             Player player = (Player) sender;
-            if (!player.hasPermission("ecobalancer.check")) {
+            if (!player.hasPermission("ecobalancer.admin")) {
                 player.sendMessage(ChatColor.RED + "你没有权限使用这个命令。");
                 return true;
             }
             if (args.length == 0) {
                 player.sendMessage(ChatColor.GREEN + "正在扫描离线玩家...");
+                plugin.checkAll(sender);
+            }
+        } else if (sender.hasPermission("ecobalancer.admin")) {
+            if (args.length == 0) {
+                sender.sendMessage(ChatColor.GREEN + "正在扫描离线玩家...");
                 plugin.checkAll(sender);
             }
         }

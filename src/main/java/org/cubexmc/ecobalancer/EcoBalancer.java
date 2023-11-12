@@ -7,23 +7,26 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.cubexmc.ecobalancer.commands.CheckAllCommand;
 import org.cubexmc.ecobalancer.commands.CheckPlayerCommand;
-import org.cubexmc.ecobalancer.commands.HelpCommand;
+import org.cubexmc.ecobalancer.commands.UtilCommand;
 
+import java.io.FileOutputStream;
+import java.nio.file.Files;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 
-import java.util.stream.Collectors;
+import java.util.zip.GZIPOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 public final class EcoBalancer extends JavaPlugin {
 
@@ -49,6 +52,42 @@ public final class EcoBalancer extends JavaPlugin {
         }
 
         saveDefaultConfig();  // 保存默认配置
+        loadConfiguration();  // 加载配置
+
+        // Check for an existing log file and compress it if found
+        File logDir = new File(getDataFolder() + File.separator + "logs");
+        if (!logDir.exists()) {
+            logDir.mkdirs(); // This will create the directory if it does not exist
+        }
+        File lockFile = new File(getDataFolder() + File.separator + "logs" + File.separator + "latest.log.lck");
+        if (lockFile.exists()) {
+            lockFile.delete(); // This will delete the lock file if it exists
+        }
+        File existingLogFile = new File(getDataFolder() + File.separator + "logs" + File.separator + "latest.log");
+        if (existingLogFile.exists()) {
+            compressExistingLogFile(existingLogFile);
+        }
+
+        try {
+            fileHandler = new FileHandler(getDataFolder() + File.separator + "logs" + File.separator + "latest.log", true);
+            fileHandler.setFormatter(new SimpleFormatter());
+            fileLogger.addHandler(fileHandler);
+            fileLogger.setUseParentHandlers(false); // 不将日志转发到父处理器，即不在控制台输出
+        } catch (IOException e) {
+            getLogger().severe("Could not setup file logger for EcoBalancer");
+            e.printStackTrace();
+        }
+
+        getCommand("ecobal").setExecutor(new UtilCommand(this));
+        getCommand("checkall").setExecutor(new CheckAllCommand(this));
+        getCommand("checkplayer").setExecutor(new CheckPlayerCommand(this));
+        getLogger().info("EcoBalancer enabled!");
+    }
+
+    public void loadConfiguration() {
+        // Cancel all scheduled tasks
+        Bukkit.getScheduler().cancelTasks(this);
+
         // Load the new scheduling configuration
         scheduleType = getConfig().getString("schedule.type", "daily");
         scheduleDaysOfWeek = getConfig().getIntegerList("schedule.days-of-week");
@@ -79,28 +118,38 @@ public final class EcoBalancer extends JavaPlugin {
             Double rate = (Double) bracket.get("rate");
             taxBrackets.put(threshold, rate);
         }
-
-        try {
-            fileHandler = new FileHandler(getDataFolder() + File.separator + "EcoBalancer.log", true);
-            fileHandler.setFormatter(new SimpleFormatter());
-            fileLogger.addHandler(fileHandler);
-            fileLogger.setUseParentHandlers(false); // 不将日志转发到父处理器，即不在控制台输出
-        } catch (IOException e) {
-            getLogger().severe("Could not setup file logger for EcoBalancer");
-            e.printStackTrace();
-        }
-
-        getCommand("help").setExecutor(new HelpCommand());
-        getCommand("checkall").setExecutor(new CheckAllCommand(this));
-        getCommand("checkplayer").setExecutor(new CheckPlayerCommand(this));
-        getLogger().info("EcoBalancer enabled!");
     }
 
     @Override
     public void onDisable() {
-        // Plugin shutdown logic
-        fileHandler.close();
+        // Ensure all pending logs are flushed and the handler is closed
+        if (fileHandler != null) {
+            fileHandler.flush();
+            fileLogger.removeHandler(fileHandler);
+            fileHandler.close();
+        }
+
+        // Now attempt to compress the log file
+        File logFile = new File(getDataFolder() + File.separator + "logs" + File.separator + "latest.log");
+        if (logFile.exists()) {
+            compressExistingLogFile(logFile);
+        }
+
         getLogger().info("EcoBalancer disabled.");
+    }
+
+    // Method to compress the existing log file
+    private void compressExistingLogFile(File logFile) {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddHHmmss");
+        String timestamp = dateFormat.format(new Date(logFile.lastModified()));
+        File compressedFile = new File(logFile.getParent(), timestamp + ".gz");
+
+        try (GZIPOutputStream gzos = new GZIPOutputStream(new FileOutputStream(compressedFile))) {
+            Files.copy(logFile.toPath(), gzos);
+        } catch (IOException e) {
+            getLogger().severe("Could not compress the log file: " + e.getMessage());
+        }
+        logFile.delete(); // 删除原始日志文件
     }
 
     private boolean setupEconomy() {
@@ -122,7 +171,7 @@ public final class EcoBalancer extends JavaPlugin {
         return econ;
     }
 
-    public void checkBalance(Player sender, long currentTime, OfflinePlayer player, boolean print) {
+    public void checkBalance(CommandSender sender, long currentTime, OfflinePlayer player, boolean log) {
         UUID playerId = player.getUniqueId();
         long lastPlayed = player.getLastPlayed();
         long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
@@ -146,7 +195,8 @@ public final class EcoBalancer extends JavaPlugin {
                     sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 的余额置为" + String.format("%.2f", balance) + "。");
                     sender.sendMessage(ChatColor.GREEN + "已将余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
                 }
-                fileLogger.info("[负额度] 已将 " + player.getName() + " 的余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
+                if (log)
+                    fileLogger.info("[负额度] 已将 " + player.getName() + " 的余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
             } else {
                 if (daysOffline > inactiveDaysToClear) {
                     // 清除超过inactiveDaysToClear天未上线的玩家
@@ -155,7 +205,8 @@ public final class EcoBalancer extends JavaPlugin {
                         sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 已经离线" + daysOffline + "天，极不活跃。");
                         sender.sendMessage(ChatColor.GREEN + "已将余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
                     }
-                    fileLogger.info("[及不活跃] 已将 " + player.getName() + " 的余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
+                    if (log)
+                        fileLogger.info("[及不活跃] 已将 " + player.getName() + " 的余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
                 } else if (daysOffline > inactiveDaysToDeduct) {
                     // 对于超过50天未上线的玩家，按税率扣除
                     double deduction = balance * deductionRate;
@@ -164,7 +215,8 @@ public final class EcoBalancer extends JavaPlugin {
                         sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 已经离线" + daysOffline + "天，较不活跃。");
                         sender.sendMessage(ChatColor.GREEN + "已从余额中扣除 " + ChatColor.YELLOW + String.format("%.2f", deduction) + ChatColor.GREEN + "。");
                     }
-                    fileLogger.info("[较不活跃] 已从 " + player.getName() + " 的余额中扣除 " + String.format("%.2f", deduction) + "。");
+                    if (log)
+                        fileLogger.info("[较不活跃] 已从 " + player.getName() + " 的余额中扣除 " + String.format("%.2f", deduction) + "。");
                 } else {
                     if (sender != null) {
                         sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 仅离线" + daysOffline + "天，较活跃。");
@@ -176,11 +228,8 @@ public final class EcoBalancer extends JavaPlugin {
             econ.withdrawPlayer(player, deduction);
             if (sender != null)
                 sender.sendMessage(ChatColor.GREEN + "已从 " + ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 的余额中扣除 " + ChatColor.YELLOW + String.format("%.2f", deduction) + ChatColor.GREEN + "。");
-            fileLogger.info("已从 " + player.getName() + " 的余额中扣除 " + String.format("%.2f", deduction) + "。");
-        }
-        if (print) {
-            getLogger().info("Player: " + player.getName() + ", UUID: " + playerId
-                + ", Offline: " + daysOffline + ", Balance: " + balance);
+            if (log)
+                fileLogger.info("已从 " + player.getName() + " 的余额中扣除 " + String.format("%.2f", deduction) + "。");
         }
     }
 
@@ -308,7 +357,15 @@ public final class EcoBalancer extends JavaPlugin {
                     Bukkit.getScheduler().runTaskLaterAsynchronously(EcoBalancer.this, this, delay);
                 } else {
                     // All players have been processed, notify the sender
-                    Bukkit.getScheduler().runTask(EcoBalancer.this, () -> sender.sendMessage(ChatColor.GREEN + "所有玩家都已被洗劫。"));
+                    // Send a message to the sender after each batch
+                    Bukkit.getScheduler().runTask(EcoBalancer.this, () -> {
+                        if (sender != null) {
+                            sender.sendMessage(ChatColor.GREEN + "所有玩家都已被洗劫。");
+                        } else {
+                            getLogger().info("所有玩家都已被洗劫。");
+                            fileLogger.info("处理了" + players.length + "个玩家，共处理：" + end);
+                        }
+                    });
                 }
             }
         }

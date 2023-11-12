@@ -7,16 +7,17 @@ author: angushushu
 website: angushushu.com
 depend: [Vault]
 commands:
-  help:
-    description: Displays help information for EcoBalancer.
-    usage: /help
   checkall:
     description: Clean or deduct all inactive players.
     usage: /checkall
   checkplayer:
     description: Clean or deduct a specific inactive player.
     usage: /checkplayer
+  ecobal:
+    description: Utility command for EcoBalancer.
+    usage: /ecobal <command>
+    permission: ecobalancer.admin
 permissions:
-  ecobalancer.check:
-    description: Allows use of checkall and checkplayer commands
+  ecobalancer.admin:
+    description: Allows use of commands
     default: op
