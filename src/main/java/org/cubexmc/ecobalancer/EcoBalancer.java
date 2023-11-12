@@ -7,6 +7,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.cubexmc.ecobalancer.commands.CheckAllCommand;
@@ -25,8 +27,8 @@ import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 
 import java.util.zip.GZIPOutputStream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
+
+import org.cubexmc.ecobalancer.metrics.Metrics;
 
 public final class EcoBalancer extends JavaPlugin {
 
@@ -42,6 +44,7 @@ public final class EcoBalancer extends JavaPlugin {
     private String scheduleType;
     private List<Integer> scheduleDaysOfWeek;
     private List<Integer> scheduleDatesOfMonth;
+    private FileConfiguration langConfig;
 
     @Override
     public void onEnable() {
@@ -78,6 +81,13 @@ public final class EcoBalancer extends JavaPlugin {
             e.printStackTrace();
         }
 
+        // metrics
+        int pluginId = 20269; // <-- Replace with the id of your plugin!
+        Metrics metrics = new Metrics(this, pluginId);
+        // Optional: Add custom charts
+        metrics.addCustomChart(new Metrics.SimplePie("chart_id", () -> "My value"));
+
+//        getCommand("ecobalancer").setExecutor(new UtilCommand(this));
         getCommand("ecobal").setExecutor(new UtilCommand(this));
         getCommand("checkall").setExecutor(new CheckAllCommand(this));
         getCommand("checkplayer").setExecutor(new CheckPlayerCommand(this));
@@ -87,7 +97,8 @@ public final class EcoBalancer extends JavaPlugin {
     public void loadConfiguration() {
         // Cancel all scheduled tasks
         Bukkit.getScheduler().cancelTasks(this);
-
+        // load language config
+        loadLangFile();
         // Load the new scheduling configuration
         scheduleType = getConfig().getString("schedule.type", "daily");
         scheduleDaysOfWeek = getConfig().getIntegerList("schedule.days-of-week");
@@ -120,6 +131,25 @@ public final class EcoBalancer extends JavaPlugin {
         }
     }
 
+    private void loadLangFile() {
+        File langFile = new File(getDataFolder(), "lang.yml");
+        if (!langFile.exists()) {
+            saveResource("lang.yml", false);
+        }
+        langConfig = YamlConfiguration.loadConfiguration(langFile);
+    }
+
+    public String getFormattedMessage(String path, Map<String, String> placeholders) {
+        String message = langConfig.getString(path, "Message not found!");
+        if (placeholders != null) {
+            for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+                message = message.replace("%" + entry.getKey() + "%", entry.getValue());
+            }
+        }
+
+        return ChatColor.translateAlternateColorCodes('&', message);
+    }
+
     @Override
     public void onDisable() {
         // Ensure all pending logs are flushed and the handler is closed
@@ -140,16 +170,25 @@ public final class EcoBalancer extends JavaPlugin {
 
     // Method to compress the existing log file
     private void compressExistingLogFile(File logFile) {
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddHHmmss");
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd-HHmm");
         String timestamp = dateFormat.format(new Date(logFile.lastModified()));
-        File compressedFile = new File(logFile.getParent(), timestamp + ".gz");
-
+        File renamedLogFile = new File(logFile.getParent(), timestamp + ".log");
+        // Rename the file to include the timestamp
+        if (!logFile.renameTo(renamedLogFile)) {
+            getLogger().severe("Could not rename the log file.");
+            return;
+        }
+        // Compress the renamed log file into a .gz file
+        File compressedFile = new File(renamedLogFile.getParent(), renamedLogFile.getName() + ".gz");
         try (GZIPOutputStream gzos = new GZIPOutputStream(new FileOutputStream(compressedFile))) {
-            Files.copy(logFile.toPath(), gzos);
+            Files.copy(renamedLogFile.toPath(), gzos);
         } catch (IOException e) {
             getLogger().severe("Could not compress the log file: " + e.getMessage());
         }
-        logFile.delete(); // 删除原始日志文件
+        // Delete the original (now renamed) log file after it's compressed
+        if (!renamedLogFile.delete()) {
+            getLogger().severe("Could not delete the original log file after compression.");
+        }
     }
 
     private boolean setupEconomy() {
@@ -187,49 +226,59 @@ public final class EcoBalancer extends JavaPlugin {
             deductionRate = 0.0; // defaultRate should be defined somewhere in your class
         }
 
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("player", player.getName());
+        placeholders.put("balance", String.format("%.2f", balance));
+        placeholders.put("days_offline", String.valueOf(daysOffline));
+
+
         if (deductBasedOnTime) {
             // 计算玩家离线天数
             if (balance < 0) {
                 econ.depositPlayer(player, -1 * balance);
+                placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
                 if (sender != null) {
-                    sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 的余额置为" + String.format("%.2f", balance) + "。");
-                    sender.sendMessage(ChatColor.GREEN + "已将余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
+                    sender.sendMessage(getFormattedMessage("messages.set_balance.reason", placeholders));
+                    sender.sendMessage(getFormattedMessage("messages.set_balance.balance_set", placeholders));
                 }
                 if (log)
-                    fileLogger.info("[负额度] 已将 " + player.getName() + " 的余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
+                    fileLogger.info(getFormattedMessage("logs.negative_balance", placeholders));
             } else {
                 if (daysOffline > inactiveDaysToClear) {
                     // 清除超过inactiveDaysToClear天未上线的玩家
                     econ.withdrawPlayer(player, balance);
+                    placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
                     if (sender != null) {
-                        sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 已经离线" + daysOffline + "天，极不活跃。");
-                        sender.sendMessage(ChatColor.GREEN + "已将余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
+                        sender.sendMessage(getFormattedMessage("messages.offline_extreme.reason", placeholders));
+                        sender.sendMessage(getFormattedMessage("messages.offline_extreme.balance_set", placeholders));
                     }
                     if (log)
-                        fileLogger.info("[及不活跃] 已将 " + player.getName() + " 的余额置为" + String.format("%.2f", econ.getBalance(player)) + "。");
+                        fileLogger.info(getFormattedMessage("logs.inactive_extreme", placeholders));
                 } else if (daysOffline > inactiveDaysToDeduct) {
                     // 对于超过50天未上线的玩家，按税率扣除
                     double deduction = balance * deductionRate;
+                    placeholders.put("deduction", String.format("%.2f", deduction));
                     econ.withdrawPlayer(player, deduction);
                     if (sender != null) {
-                        sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 已经离线" + daysOffline + "天，较不活跃。");
-                        sender.sendMessage(ChatColor.GREEN + "已从余额中扣除 " + ChatColor.YELLOW + String.format("%.2f", deduction) + ChatColor.GREEN + "。");
+                        sender.sendMessage(getFormattedMessage("messages.offline_moderate.reason", placeholders));
+                        sender.sendMessage(getFormattedMessage("messages.offline_moderate.deduction_made", placeholders));
                     }
                     if (log)
-                        fileLogger.info("[较不活跃] 已从 " + player.getName() + " 的余额中扣除 " + String.format("%.2f", deduction) + "。");
+                        fileLogger.info(getFormattedMessage("logs.inactive_moderate", placeholders));
                 } else {
                     if (sender != null) {
-                        sender.sendMessage(ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 仅离线" + daysOffline + "天，较活跃。");
+                        sender.sendMessage(getFormattedMessage("messages.offline_active", placeholders));
                     }
                 }
             }
         } else {
             double deduction = balance * deductionRate;
+            placeholders.put("deduction", String.format("%.2f", deduction));
             econ.withdrawPlayer(player, deduction);
             if (sender != null)
-                sender.sendMessage(ChatColor.GREEN + "已从 " + ChatColor.YELLOW + player.getName() + ChatColor.GREEN + " 的余额中扣除 " + ChatColor.YELLOW + String.format("%.2f", deduction) + ChatColor.GREEN + "。");
+                sender.sendMessage(getFormattedMessage("messages.deduction_made", placeholders));
             if (log)
-                fileLogger.info("已从 " + player.getName() + " 的余额中扣除 " + String.format("%.2f", deduction) + "。");
+                fileLogger.info(getFormattedMessage("logs.deduction_made", placeholders));
         }
     }
 
@@ -346,11 +395,18 @@ public final class EcoBalancer extends JavaPlugin {
                     checkBalance(null, currentTime, player, false);
                 }
                 index += batchSize;
+
+                Map<String, String> placeholders = new HashMap<>();
+                placeholders.put("start", Integer.toString(start));
+                placeholders.put("end", Integer.toString(end));
+                placeholders.put("batch", Integer.toString(end - start));
+                placeholders.put("total_players", Integer.toString(players.length));
+
                 if (sender != null) {
                     // Send a message to the sender after each batch
-                    Bukkit.getScheduler().runTask(EcoBalancer.this, () -> sender.sendMessage(ChatColor.GRAY + "处理了" + (end - start) + "个玩家，共处理：" + end));
+                    Bukkit.getScheduler().runTask(EcoBalancer.this, () -> sender.sendMessage(getFormattedMessage("messages.players_processing", placeholders)));
                 } else {
-                    getLogger().info("处理了" + (end - start) + "个玩家，共处理：" + end);
+                    getLogger().info(getFormattedMessage("logs.players_processed", placeholders));
                 }
                 if (index < players.length) {
                     // Schedule next batch
@@ -360,10 +416,10 @@ public final class EcoBalancer extends JavaPlugin {
                     // Send a message to the sender after each batch
                     Bukkit.getScheduler().runTask(EcoBalancer.this, () -> {
                         if (sender != null) {
-                            sender.sendMessage(ChatColor.GREEN + "所有玩家都已被洗劫。");
+                            sender.sendMessage(getFormattedMessage("messages.all_players_processed", null));
                         } else {
-                            getLogger().info("所有玩家都已被洗劫。");
-                            fileLogger.info("处理了" + players.length + "个玩家，共处理：" + end);
+                            getLogger().info(getFormattedMessage("logs.all_players_processed", null));
+                            fileLogger.info(getFormattedMessage("logs.all_players_processed", null));
                         }
                     });
                 }

@@ -1,0 +1,39 @@
+# to use English version, you need to rename this file to lang.yml
+messages:
+  # reload
+  reload_success: '&aConfig file reloaded successfully.'
+  # help
+  commands:
+    help: '&e/ecobal help &f- Help'
+    checkall: '&e/checkall &f- Check and clean all player balances'
+    checkplayer: '&e/checkplayer <player> &f- Check and clean single player balance'
+    reload: '&e/ecobal reload &f- Reload config file'
+  help_footer: '&7&oFrom CubeX Ruling Class Toolkit'
+  help_header: '&f&lEcoBalancer Help:'
+  # check
+  no_permission: '&cYou do not have permission to use this command.'
+  scanning_offline_players: '&aScanning offline players...'
+  enter_player_name_or_use_checkall: '&aPlease enter player name or use /checkall'
+  # ecobal
+  set_balance:
+    reason: "&ePlayer &6%player% &e's balance is &6%balance%&e."
+    balance_set: "&eBalance has been set to &6%new_balance%&e."
+  offline_extreme:
+    reason: "&ePlayer &6%player% &ehas been offline for &6%days_offline% &edays, extremely inactive."
+    balance_set: "&eBalance has been set to &6%new_balance%&e."
+  offline_moderate:
+    reason: "&ePlayer &6%player% &ehas been offline for &6%days_offline% &edays, moderately inactive."
+    deduction_made: "&e&6%deduction% &ehas been deducted from the balance."
+  offline_active: "&ePlayer &6%player% &ehas only been offline &6%days_offline% &edays, moderately active."
+  deduction_made: "&e&6%deduction% &ehas been deducted from &6%player%&e's balance."
+  players_processing: "&7Processed &6%batch% &7players, total processed: &6%end%"
+  players_processed: "&7Total &6%end% &7players, total processed: &6%end%"
+  all_players_processed: "&aAll players have been cleaned."
+logs:
+  negative_balance: "[Negative Balance] Set %player%'s balance to %balance%."
+  inactive_extreme: "[Extremely Inactive] Set %player%'s balance to %new_balance%."
+  inactive_moderate: "[Moderately Inactive] Deducted %deduction% from %player%'s balance."
+  deduction_made: "Deducted %deduction% from %player%'s balance."
+  players_processed: "Processed %start% players, total processed: %end%"
+  all_players_processed: "All players have been cleaned."
+  batch_processed: "Processed %total_players% players, total processed: %end%"

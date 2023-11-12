@@ -24,17 +24,17 @@ public class CheckPlayerCommand implements CommandExecutor {
         if (sender instanceof Player) {
             Player player = (Player) sender;
             if (!player.hasPermission("ecobalancer.admin")) {
-                player.sendMessage(ChatColor.RED + "你没有权限使用这个命令。");
+                player.sendMessage(plugin.getFormattedMessage("messages.no_permission", null));
                 return true;
             }
             if (args.length == 0) {
-                player.sendMessage(ChatColor.GREEN + "请输入玩家名称或使用/checkall");
+                player.sendMessage(plugin.getFormattedMessage("messages.enter_player_name_or_use_checkall", null));
             } else {
                 checkPlayer(player, args[0]);
             }
         } else if (sender.hasPermission("ecobalancer.admin")) {
             if (args.length == 0) {
-                sender.sendMessage(ChatColor.GREEN + "请输入玩家名称或使用/checkall");
+                sender.sendMessage(plugin.getFormattedMessage("messages.enter_player_name_or_use_checkall", null));
             } else {
                 checkPlayer(sender, args[0]);
             }

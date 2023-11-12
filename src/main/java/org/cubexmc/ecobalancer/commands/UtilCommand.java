@@ -7,6 +7,9 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.cubexmc.ecobalancer.EcoBalancer;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class UtilCommand implements CommandExecutor {
     EcoBalancer plugin;
 
@@ -15,19 +18,23 @@ public class UtilCommand implements CommandExecutor {
     }
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+
         if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
             Bukkit.getScheduler().cancelTasks(plugin);
             plugin.reloadConfig();
             plugin.loadConfiguration(); // You should create this method
-            sender.sendMessage(ChatColor.GREEN + "EcoBalancer 重载成功");
+            sender.sendMessage(plugin.getFormattedMessage("messages.reload_success", null));
             return true;
         } else if (args.length > 0 && args[0].equalsIgnoreCase("help")) {
-            sender.sendMessage(ChatColor.WHITE + "" + ChatColor.BOLD + "EcoBalancer 帮助:");
-            sender.sendMessage(ChatColor.YELLOW + "/ecobal help " + ChatColor.WHITE + "- 帮助");
-            sender.sendMessage(ChatColor.YELLOW + "/checkall " + ChatColor.WHITE + "- 检查并清洗全部玩家余额");
-            sender.sendMessage(ChatColor.YELLOW + "/checkplayer <player> " + ChatColor.WHITE + "- 检查并清洗单个玩家余额");
-            sender.sendMessage(ChatColor.YELLOW + "/ecobal reload " + ChatColor.WHITE + "- 重载配置文件");
-            sender.sendMessage(ChatColor.GRAY + "" + ChatColor.ITALIC + "来自CubeX统治阶级工具包");
+            sender.sendMessage(plugin.getFormattedMessage("messages.help_header", null));
+            String[] commandMessages = {
+                    plugin.getFormattedMessage("messages.commands.help", null),
+                    plugin.getFormattedMessage("messages.commands.checkall", null),
+                    plugin.getFormattedMessage("messages.commands.checkplayer", null),
+                    plugin.getFormattedMessage("messages.commands.reload", null),
+                    plugin.getFormattedMessage("messages.help_footer", null)
+            };
+            sender.sendMessage(String.join("\n", commandMessages));
             return true;
         }
         return false;
