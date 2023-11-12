@@ -1,6 +1,7 @@
 # EcoBalancer
 该插件用于伤害方块叉服务器统治阶级与玩家之间的感情<br>
 Brutal punishment toward inactive players of CubeX
+1.12-1.20
 
 ### /checkall
 遍历并清洗全部离线玩家的余额<br>
