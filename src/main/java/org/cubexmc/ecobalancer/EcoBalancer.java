@@ -26,6 +26,8 @@ import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 
+import static java.lang.Math.min;
+
 import java.util.zip.GZIPOutputStream;
 
 import org.cubexmc.ecobalancer.metrics.Metrics;
@@ -211,7 +213,6 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     public void checkBalance(CommandSender sender, long currentTime, OfflinePlayer player, boolean log) {
-        UUID playerId = player.getUniqueId();
         long lastPlayed = player.getLastPlayed();
         long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
         double balance = econ.hasAccount(player) ? econ.getBalance(player) : 0;
@@ -231,19 +232,19 @@ public final class EcoBalancer extends JavaPlugin {
         placeholders.put("balance", String.format("%.2f", balance));
         placeholders.put("days_offline", String.valueOf(daysOffline));
 
-
-        if (deductBasedOnTime) {
-            // 计算玩家离线天数
-            if (balance < 0) {
-                econ.depositPlayer(player, -1 * balance);
-                placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
-                if (sender != null) {
-                    sender.sendMessage(getFormattedMessage("messages.set_balance.reason", placeholders));
-                    sender.sendMessage(getFormattedMessage("messages.set_balance.balance_set", placeholders));
-                }
-                if (log)
-                    fileLogger.info(getFormattedMessage("logs.negative_balance", placeholders));
-            } else {
+        // fix all negative balance
+        if (balance < 0.0) {
+            econ.depositPlayer(player, -1 * balance);
+            placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
+            if (sender != null) {
+                sender.sendMessage(getFormattedMessage("messages.set_balance.reason", placeholders));
+                sender.sendMessage(getFormattedMessage("messages.set_balance.balance_set", placeholders));
+            }
+            if (log)
+                fileLogger.info(getFormattedMessage("logs.negative_balance", placeholders));
+        } else if (deductionRate > 0.0) {
+            if (deductBasedOnTime) {
+                // 计算玩家离线天数
                 if (daysOffline > inactiveDaysToClear) {
                     // 清除超过inactiveDaysToClear天未上线的玩家
                     econ.withdrawPlayer(player, balance);
@@ -253,10 +254,10 @@ public final class EcoBalancer extends JavaPlugin {
                         sender.sendMessage(getFormattedMessage("messages.offline_extreme.balance_set", placeholders));
                     }
                     if (log)
-                        fileLogger.info(getFormattedMessage("logs.inactive_extreme", placeholders));
+                        fileLogger.info(getFormattedMessage("logs.offline_extreme", placeholders));
                 } else if (daysOffline > inactiveDaysToDeduct) {
                     // 对于超过50天未上线的玩家，按税率扣除
-                    double deduction = balance * deductionRate;
+                    double deduction = min(balance, balance * deductionRate); // in case deductionRate is greater than 1
                     placeholders.put("deduction", String.format("%.2f", deduction));
                     econ.withdrawPlayer(player, deduction);
                     if (sender != null) {
@@ -264,21 +265,26 @@ public final class EcoBalancer extends JavaPlugin {
                         sender.sendMessage(getFormattedMessage("messages.offline_moderate.deduction_made", placeholders));
                     }
                     if (log)
-                        fileLogger.info(getFormattedMessage("logs.inactive_moderate", placeholders));
+                        fileLogger.info(getFormattedMessage("logs.offline_moderate", placeholders));
                 } else {
                     if (sender != null) {
                         sender.sendMessage(getFormattedMessage("messages.offline_active", placeholders));
                     }
                 }
+            } else {
+                double deduction = min(balance, balance * deductionRate); // in case deductionRate is greater than 1
+                placeholders.put("deduction", String.format("%.2f", deduction));
+                econ.withdrawPlayer(player, deduction);
+                if (sender != null)
+                    sender.sendMessage(getFormattedMessage("messages.deduction_made", placeholders));
+                if (log)
+                    fileLogger.info(getFormattedMessage("logs.deduction_made", placeholders));
             }
         } else {
-            double deduction = balance * deductionRate;
-            placeholders.put("deduction", String.format("%.2f", deduction));
-            econ.withdrawPlayer(player, deduction);
             if (sender != null)
-                sender.sendMessage(getFormattedMessage("messages.deduction_made", placeholders));
+                sender.sendMessage(getFormattedMessage("messages.zero_balance", placeholders));
             if (log)
-                fileLogger.info(getFormattedMessage("logs.deduction_made", placeholders));
+                fileLogger.info(getFormattedMessage("logs.zero_balance", placeholders));
         }
     }
 

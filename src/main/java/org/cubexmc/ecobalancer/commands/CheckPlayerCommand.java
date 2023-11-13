@@ -1,16 +1,12 @@
 package org.cubexmc.ecobalancer.commands;
 
-import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.cubexmc.ecobalancer.EcoBalancer;
-
-import java.util.UUID;
 
 public class CheckPlayerCommand implements CommandExecutor {
     EcoBalancer plugin;
@@ -44,8 +40,12 @@ public class CheckPlayerCommand implements CommandExecutor {
     }
 
     private void checkPlayer(CommandSender sender, String playerName) {
-        long currentTime = System.currentTimeMillis();
         OfflinePlayer target = Bukkit.getOfflinePlayer(playerName);
-        plugin.checkBalance(sender, currentTime, target, true);
+        if (target.hasPlayedBefore()) {
+            long currentTime = System.currentTimeMillis();
+            plugin.checkBalance(sender, currentTime, target, true);
+        } else {
+            sender.sendMessage(plugin.getFormattedMessage("messages.player_not_found", null));
+        }
     }
 }

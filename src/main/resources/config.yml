@@ -1,7 +1,7 @@
 check-time: "20:00"  # 格式为 HH:mm # Time format is HH:mm
 check-schedule:
 type: 'weekly' # 选项: 'daily', 'weekly', 'monthly' # Options: 'daily', 'weekly', 'monthly'
-days-of-week: [1, 3, 5] # 周一, 周三, 周五 (1 = 周六, 7 = 周日) # Monday, Wednesday, Friday (1 = Saturday, 7 = Sunday)
+days-of-week: [1, 3, 5] # 周一, 周三, 周五 (6 = 周六, 7 = 周日) # Monday, Wednesday, Friday (6 = Saturday, 7 = Sunday)
 dates-of-month: [1] # 每月一号 # 1st day of each month
 deduct-based-on-time: true
 # 下面两个选项仅在 deduct-based-on-time 为 true 时生效 # The following two options only take effect when deduct-based-on-time is true
