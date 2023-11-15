@@ -1,4 +1,5 @@
 org\cubexmc\ecobalancer\EcoBalancer$1BatchRunnable.class
+org\cubexmc\ecobalancer\listeners\AdminLoginListener.class
 org\cubexmc\ecobalancer\EcoBalancer.class
 org\cubexmc\ecobalancer\metrics\Metrics$1.class
 org\cubexmc\ecobalancer\commands\CheckPlayerCommand.class

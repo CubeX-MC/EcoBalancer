@@ -38,7 +38,6 @@ public class CheckAllCommand implements CommandExecutor {
             }
         }
 
-
         return true;
     }
 }

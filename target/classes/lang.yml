@@ -1,6 +1,7 @@
+prefix: '&7[&6EcoBalancer&7]&r'
 messages:
   # reload
-  reload_success: '&a配置文件已成功重载。'
+  reload_success: '%prefix% &a配置文件已成功重载。'
   # help
   commands:
     help: '&e/ecobal help &f- 帮助'
@@ -14,15 +15,9 @@ messages:
   scanning_offline_players: '&a正在扫描离线玩家...'
   enter_player_name_or_use_checkall: '&a请输入玩家名称或使用/checkall'
   # ecobal
-  set_balance:
-    reason: "&e玩家 &6%player% &e的余额为 &6%balance%&e。"
-    balance_set: "&e已将余额置为 &6%new_balance%&e。"
-  offline_extreme:
-    reason: "&e玩家 &6%player% &e已经离线 &6%days_offline% &e天，极不活跃。"
-    balance_set: "&e已将余额置为 &6%new_balance%&e。"
-  offline_moderate:
-    reason: "&e玩家 &6%player% &e已经离线 &6%days_offline% &e天，较不活跃。"
-    deduction_made: "&e已从余额中扣除 &6%deduction%&e。"
+  negative_balance: "&e玩家 &6%player% &e的余额为 &6%balance%&e。\n&e已将余额置为 &6%new_balance%&e。"
+  offline_extreme: "&e玩家 &6%player% &e已经离线 &6%days_offline% &e天，极不活跃。\n&e已将余额置为 &6%new_balance%&e。"
+  offline_moderate: "&e玩家 &6%player% &e已经离线 &6%days_offline% &e天，较不活跃。\n&e已从余额中扣除 &6%deduction%&e。"
   offline_active: "&e玩家 &6%player% &e仅离线 &6%days_offline% &e天，较活跃。"
   deduction_made: "&e已从 &6%player% &e的余额中扣除 &6%deduction%&e。"
   players_processing: "&7处理了 &6%batch% &7个玩家，共处理：&6%end%"
@@ -30,12 +25,6 @@ messages:
   all_players_processed: "&a所有玩家都已被洗劫。"
   zero_balance: "&e玩家 &6%player% &e的余额为 &60&e。"
   player_not_found: "&c没找到该玩家 (大小写敏感)。"
-logs:
-  negative_balance: "[负额度] 已将 %player% 的余额置为%balance%。"
-  offline_extreme: "[及不活跃] 已将 %player% 的余额置为%new_balance%。"
-  offline_moderate: "[较不活跃] 已从 %player% 的余额中扣除 %deduction%。"
-  deduction_made: "已从 %player% 的余额中扣除 %deduction%。"
-  players_processed: "处理了 %start% 个玩家，共处理：%end%"
-  all_players_processed: "所有玩家都已被洗劫。"
-  batch_processed: "处理了 %total_players% 个玩家，共处理：%end%"
-  zero_balance: "&e玩家 &6%player% &e的余额为 &60&e。"
+  # taxaccount
+  tax_account_enabled: "&e税金账户已启用。\n&e税金账户名称为 &6%tax_account_name%&e。\n&e税金账户余额为 &6%tax_account_balance%&e。"
+  tax_account_disabled: "&e税金账户未启用。"

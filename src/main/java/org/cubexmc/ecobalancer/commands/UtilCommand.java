@@ -34,7 +34,7 @@ public class UtilCommand implements CommandExecutor {
                     plugin.getFormattedMessage("messages.commands.reload", null),
                     plugin.getFormattedMessage("messages.help_footer", null)
             };
-            sender.sendMessage(String.join("\n", commandMessages));
+            for (String str : commandMessages) sender.sendMessage(str);
             return true;
         }
         return false;

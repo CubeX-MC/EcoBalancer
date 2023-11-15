@@ -6,9 +6,11 @@ import net.milkbowl.vault.permission.Permission;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.cubexmc.ecobalancer.commands.CheckAllCommand;
@@ -30,10 +32,10 @@ import static java.lang.Math.min;
 
 import java.util.zip.GZIPOutputStream;
 
+import org.cubexmc.ecobalancer.listeners.AdminLoginListener;
 import org.cubexmc.ecobalancer.metrics.Metrics;
 
 public final class EcoBalancer extends JavaPlugin {
-
     private static Economy econ = null;
     private static Permission perms = null;
     private static Chat chat = null;
@@ -41,12 +43,15 @@ public final class EcoBalancer extends JavaPlugin {
     private int inactiveDaysToDeduct;
     private TreeMap<Integer, Double> taxBrackets = new TreeMap<>();
     private int inactiveDaysToClear;
-    private Logger fileLogger = Logger.getLogger("EcoBalancerFileLogger");
     private FileHandler fileHandler;
+    private Logger fileLogger = Logger.getLogger("EcoBalancerFileLogger");
     private String scheduleType;
     private List<Integer> scheduleDaysOfWeek;
     private List<Integer> scheduleDatesOfMonth;
     private FileConfiguration langConfig;
+    private boolean taxAccount;
+    private String taxAccountName;
+    private String messagePrefix;
 
     @Override
     public void onEnable() {
@@ -77,9 +82,9 @@ public final class EcoBalancer extends JavaPlugin {
             fileHandler = new FileHandler(getDataFolder() + File.separator + "logs" + File.separator + "latest.log", true);
             fileHandler.setFormatter(new SimpleFormatter());
             fileLogger.addHandler(fileHandler);
-            fileLogger.setUseParentHandlers(false); // 不将日志转发到父处理器，即不在控制台输出
+            fileLogger.setUseParentHandlers(false);
         } catch (IOException e) {
-            getLogger().severe("Could not setup file logger for EcoBalancer");
+            getLogger().severe("Could not create the log file handler for EcoBalancer.");
             e.printStackTrace();
         }
 
@@ -89,11 +94,28 @@ public final class EcoBalancer extends JavaPlugin {
         // Optional: Add custom charts
         metrics.addCustomChart(new Metrics.SimplePie("chart_id", () -> "My value"));
 
-//        getCommand("ecobalancer").setExecutor(new UtilCommand(this));
+        // 创建虚拟账户
+        if (taxAccount && !econ.hasAccount(taxAccountName)) {
+            econ.createPlayerAccount(taxAccountName);
+        }
+
+        getServer().getPluginManager().registerEvents(new AdminLoginListener(this), this);
         getCommand("ecobal").setExecutor(new UtilCommand(this));
         getCommand("checkall").setExecutor(new CheckAllCommand(this));
         getCommand("checkplayer").setExecutor(new CheckPlayerCommand(this));
         getLogger().info("EcoBalancer enabled!");
+    }
+
+    public boolean useTaxAccount() {
+        return taxAccount;
+    }
+
+    public String getTaxAccountName() {
+        return taxAccountName;
+    }
+
+    public String getTaxAccountBalance() {
+        return String.format("%.2f", econ.getBalance(taxAccountName));
     }
 
     public void loadConfiguration() {
@@ -101,6 +123,7 @@ public final class EcoBalancer extends JavaPlugin {
         Bukkit.getScheduler().cancelTasks(this);
         // load language config
         loadLangFile();
+        messagePrefix = langConfig.getString("prefix", "&7[&6EcoBalancer&7]&r");
         // Load the new scheduling configuration
         scheduleType = getConfig().getString("schedule.type", "daily");
         scheduleDaysOfWeek = getConfig().getIntegerList("schedule.days-of-week");
@@ -125,6 +148,8 @@ public final class EcoBalancer extends JavaPlugin {
         inactiveDaysToDeduct = getConfig().getInt("inactive-days-to-deduct", 50);
         inactiveDaysToClear = getConfig().getInt("inactive-days-to-clear", 500);
         List<Map<?, ?>> rawTaxBrackets = getConfig().getMapList("tax-brackets");
+        taxAccount = getConfig().getBoolean("tax-account", false);
+        taxAccountName = taxAccount ? getConfig().getString("tax-account-name", "tax") : null;
 
         for (Map<?, ?> bracket : rawTaxBrackets) {
             Integer threshold = bracket.get("threshold") == null ? Integer.MAX_VALUE : (Integer) bracket.get("threshold");
@@ -142,6 +167,10 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     public String getFormattedMessage(String path, Map<String, String> placeholders) {
+        if (placeholders == null) {
+            placeholders = new HashMap<>();
+        }
+        placeholders.put("prefix", messagePrefix);
         String message = langConfig.getString(path, "Message not found!");
         if (placeholders != null) {
             for (Map.Entry<String, String> entry : placeholders.entrySet()) {
@@ -218,6 +247,8 @@ public final class EcoBalancer extends JavaPlugin {
         double balance = econ.hasAccount(player) ? econ.getBalance(player) : 0;
         Double deductionRate = 0.0;
 
+        if (taxAccount && player.getName().equals(taxAccountName)) return;
+
         Map.Entry<Integer, Double> entry = taxBrackets.higherEntry((int) balance);
         if (entry != null) {
             deductionRate = entry.getValue();
@@ -236,56 +267,42 @@ public final class EcoBalancer extends JavaPlugin {
         if (balance < 0.0) {
             econ.depositPlayer(player, -1 * balance);
             placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
-            if (sender != null) {
-                sender.sendMessage(getFormattedMessage("messages.set_balance.reason", placeholders));
-                sender.sendMessage(getFormattedMessage("messages.set_balance.balance_set", placeholders));
-            }
-            if (log)
-                fileLogger.info(getFormattedMessage("logs.negative_balance", placeholders));
-        } else if (deductionRate > 0.0) {
+
+        } else if (balance > 0.0) {
             if (deductBasedOnTime) {
                 // 计算玩家离线天数
                 if (daysOffline > inactiveDaysToClear) {
                     // 清除超过inactiveDaysToClear天未上线的玩家
                     econ.withdrawPlayer(player, balance);
+                    if (taxAccount) econ.depositPlayer(taxAccountName, balance); //
                     placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
-                    if (sender != null) {
-                        sender.sendMessage(getFormattedMessage("messages.offline_extreme.reason", placeholders));
-                        sender.sendMessage(getFormattedMessage("messages.offline_extreme.balance_set", placeholders));
-                    }
-                    if (log)
-                        fileLogger.info(getFormattedMessage("logs.offline_extreme", placeholders));
+                    sendMessage(sender, "messages.offline_extreme", placeholders, log);
                 } else if (daysOffline > inactiveDaysToDeduct) {
                     // 对于超过50天未上线的玩家，按税率扣除
                     double deduction = min(balance, balance * deductionRate); // in case deductionRate is greater than 1
                     placeholders.put("deduction", String.format("%.2f", deduction));
                     econ.withdrawPlayer(player, deduction);
-                    if (sender != null) {
-                        sender.sendMessage(getFormattedMessage("messages.offline_moderate.reason", placeholders));
-                        sender.sendMessage(getFormattedMessage("messages.offline_moderate.deduction_made", placeholders));
-                    }
-                    if (log)
-                        fileLogger.info(getFormattedMessage("logs.offline_moderate", placeholders));
+                    if (taxAccount) econ.depositPlayer(taxAccountName, deduction);
+                    sendMessage(sender, "messages.offline_moderate", placeholders, log);
                 } else {
-                    if (sender != null) {
-                        sender.sendMessage(getFormattedMessage("messages.offline_active", placeholders));
-                    }
+                    sendMessage(sender, "messages.offline_active", placeholders, false);
                 }
             } else {
                 double deduction = min(balance, balance * deductionRate); // in case deductionRate is greater than 1
                 placeholders.put("deduction", String.format("%.2f", deduction));
                 econ.withdrawPlayer(player, deduction);
-                if (sender != null)
-                    sender.sendMessage(getFormattedMessage("messages.deduction_made", placeholders));
-                if (log)
-                    fileLogger.info(getFormattedMessage("logs.deduction_made", placeholders));
+                if (taxAccount) econ.depositPlayer(taxAccountName, deduction);
+                sendMessage(sender, "messages.deduction_made", placeholders, log);
             }
         } else {
-            if (sender != null)
-                sender.sendMessage(getFormattedMessage("messages.zero_balance", placeholders));
-            if (log)
-                fileLogger.info(getFormattedMessage("logs.zero_balance", placeholders));
+            sendMessage(sender, "messages.zero_balance", placeholders, log);
         }
+    }
+
+    private void sendMessage(CommandSender sender, String path, Map<String, String> placeholders, boolean isLog) {
+        String message = getFormattedMessage(path, placeholders);
+        if (sender != null) for (String str : message.split("\n")) sender.sendMessage(str);
+        if (isLog) for (String str : message.split("\n")) fileLogger.info(str);
     }
 
     private long calculateInitialDailyDelay(int hourOfDay, int minute) {
@@ -408,12 +425,7 @@ public final class EcoBalancer extends JavaPlugin {
                 placeholders.put("batch", Integer.toString(end - start));
                 placeholders.put("total_players", Integer.toString(players.length));
 
-                if (sender != null) {
-                    // Send a message to the sender after each batch
-                    Bukkit.getScheduler().runTask(EcoBalancer.this, () -> sender.sendMessage(getFormattedMessage("messages.players_processing", placeholders)));
-                } else {
-                    getLogger().info(getFormattedMessage("logs.players_processed", placeholders));
-                }
+                sendMessage(sender, "messages.players_processing", placeholders, true);
                 if (index < players.length) {
                     // Schedule next batch
                     Bukkit.getScheduler().runTaskLaterAsynchronously(EcoBalancer.this, this, delay);
@@ -421,12 +433,7 @@ public final class EcoBalancer extends JavaPlugin {
                     // All players have been processed, notify the sender
                     // Send a message to the sender after each batch
                     Bukkit.getScheduler().runTask(EcoBalancer.this, () -> {
-                        if (sender != null) {
-                            sender.sendMessage(getFormattedMessage("messages.all_players_processed", null));
-                        } else {
-                            getLogger().info(getFormattedMessage("logs.all_players_processed", null));
-                            fileLogger.info(getFormattedMessage("logs.all_players_processed", null));
-                        }
+                        sendMessage(sender, "messages.all_players_processed", null, true);
                     });
                 }
             }

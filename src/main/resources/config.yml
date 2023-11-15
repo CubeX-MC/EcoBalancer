@@ -15,3 +15,5 @@ tax-brackets:
     rate: 0.01 # 税率 # Tax rate
   - threshold: null # 无上限 # No limit
     rate: 0.02 # 税率 # Tax rate
+tax-account: true # 是否使用税金账户 # Whether to use tax account
+tax-account-name: 'tax' # 税金账户名称 # Tax account name

@@ -1,4 +1,5 @@
 # to use English version, you need to rename this file to lang.yml
+prefix: '&7[&6EcoBalancer&7]&r'
 messages:
   # reload
   reload_success: '&aConfig file reloaded successfully.'
@@ -15,15 +16,9 @@ messages:
   scanning_offline_players: '&aScanning offline players...'
   enter_player_name_or_use_checkall: '&aPlease enter player name or use /checkall'
   # ecobal
-  set_balance:
-    reason: "&ePlayer &6%player% &e's balance is &6%balance%&e."
-    balance_set: "&eBalance has been set to &6%new_balance%&e."
-  offline_extreme:
-    reason: "&ePlayer &6%player% &ehas been offline for &6%days_offline% &edays, extremely inactive."
-    balance_set: "&eBalance has been set to &6%new_balance%&e."
-  offline_moderate:
-    reason: "&ePlayer &6%player% &ehas been offline for &6%days_offline% &edays, moderately inactive."
-    deduction_made: "&e&6%deduction% &ehas been deducted from the balance."
+  set_balance: "&ePlayer &6%player% &e's balance is &6%balance%&e.\n&eBalance has been set to &6%new_balance%&e."
+  offline_extreme: "&ePlayer &6%player% &ehas been offline for &6%days_offline% &edays, extremely inactive.\n&eBalance has been set to &6%new_balance%&e."
+  offline_moderate: "&ePlayer &6%player% &ehas been offline for &6%days_offline% &edays, moderately inactive.\n&e&6%deduction% &ehas been deducted from the balance."
   offline_active: "&ePlayer &6%player% &ehas only been offline &6%days_offline% &edays, moderately active."
   deduction_made: "&e&6%deduction% &ehas been deducted from &6%player%&e's balance."
   players_processing: "&7Processed &6%batch% &7players, total processed: &6%end%"
@@ -31,12 +26,6 @@ messages:
   all_players_processed: "&aAll players have been cleaned."
   zero_balance: "&ePlayer &6%player% &e's balance is &60&e."
   player_not_found: "&cPlayer not found (case sensitive)."
-logs:
-  negative_balance: "[Negative Balance] Set %player%'s balance to %balance%."
-  offline_extreme: "[Extremely Inactive] Set %player%'s balance to %new_balance%."
-  offline_moderate: "[Moderately Inactive] Deducted %deduction% from %player%'s balance."
-  deduction_made: "Deducted %deduction% from %player%'s balance."
-  players_processed: "Processed %start% players, total processed: %end%"
-  all_players_processed: "All players have been cleaned."
-  batch_processed: "Processed %total_players% players, total processed: %end%"
-  zero_balance: "&ePlayer &6%player% &e's balance is &60&e."
+  # taxaccount
+  tax_account_enabled: "&eTax account enabled.\n&eTax account name is &6%tax_account_name%&e.\n&eTax account balance is &6%tax_account_balance%&e."
+  tax_account_disabled: "&eTax account disabled."
