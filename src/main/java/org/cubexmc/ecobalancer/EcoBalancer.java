@@ -48,6 +48,7 @@ public final class EcoBalancer extends JavaPlugin {
     private String scheduleType;
     private List<Integer> scheduleDaysOfWeek;
     private List<Integer> scheduleDatesOfMonth;
+    private String checkTime;
     private FileConfiguration langConfig;
     private boolean taxAccount;
     private String taxAccountName;
@@ -125,24 +126,12 @@ public final class EcoBalancer extends JavaPlugin {
         loadLangFile();
         messagePrefix = langConfig.getString("prefix", "&7[&6EcoBalancer&7]&r");
         // Load the new scheduling configuration
-        scheduleType = getConfig().getString("schedule.type", "daily");
-        scheduleDaysOfWeek = getConfig().getIntegerList("schedule.days-of-week");
-        scheduleDatesOfMonth = getConfig().getIntegerList("schedule.dates-of-month");
-        String checkTime = getConfig().getString("check-time", "01:00");  // 读取配置
-        int hourOfDay = Integer.parseInt(checkTime.split(":")[0]);
-        int minute = Integer.parseInt(checkTime.split(":")[1]);
+        scheduleType = getConfig().getString("check-schedule.type", "daily");
+        scheduleDaysOfWeek = getConfig().getIntegerList("check-schedule.days-of-week");
+        scheduleDatesOfMonth = getConfig().getIntegerList("check-schedule.dates-of-month");
+        checkTime = getConfig().getString("check-time", "01:00");  // 读取配置
         // Determine which scheduling method to use based on the type
-        switch (scheduleType.toLowerCase()) {
-            case "weekly":
-                scheduleWeeklyChecks();
-                break;
-            case "monthly":
-                scheduleMonthlyChecks();
-                break;
-            default:
-                scheduleDailyChecks(hourOfDay, minute);
-                break;
-        }
+        scheduleCheck(calculateNextDelay());
         // deduction setting
         deductBasedOnTime = getConfig().getBoolean("deduct-based-on-time", false);
         inactiveDaysToDeduct = getConfig().getInt("inactive-days-to-deduct", 50);
@@ -305,99 +294,108 @@ public final class EcoBalancer extends JavaPlugin {
         if (isLog) for (String str : message.split("\n")) fileLogger.info(str);
     }
 
-    private long calculateInitialDailyDelay(int hourOfDay, int minute) {
+    private long calculateNextDelay() {
         Calendar now = Calendar.getInstance();
+
+        // 选择最近的一个执行时间
+        switch (scheduleType) {
+            case "daily":
+                return calculateDelayForDaily(now);
+            case "weekly":
+                return calculateDelayForWeekly(now);
+            case "monthly":
+                return calculateDelayForMonthly(now);
+            default:
+                return calculateDelayForDaily(now);
+        }
+    }
+
+    private long calculateDelayForDaily(Calendar now) {
+        int hourOfDay = Integer.parseInt(checkTime.split(":")[0]);
+        int minute = Integer.parseInt(checkTime.split(":")[1]);
+
         Calendar nextCheck = (Calendar) now.clone();
         nextCheck.set(Calendar.HOUR_OF_DAY, hourOfDay);
         nextCheck.set(Calendar.MINUTE, minute);
         nextCheck.set(Calendar.SECOND, 0);
         nextCheck.set(Calendar.MILLISECOND, 0);
 
-        // If the next check time is before the current time, add one day
+        // 如果下一个检查时间在现在之前，添加一天
         if (nextCheck.before(now)) {
             nextCheck.add(Calendar.DAY_OF_MONTH, 1);
         }
 
-        return (nextCheck.getTimeInMillis() - now.getTimeInMillis()) / 50; // Ticks until the next check
+        return (nextCheck.getTimeInMillis() - now.getTimeInMillis()) / 50; // 返回ticks
     }
 
-    private long calculateInitialWeeklyDelay() {
-        Calendar now = Calendar.getInstance();
+    private long calculateDelayForWeekly(Calendar now) {
         int today = now.get(Calendar.DAY_OF_WEEK);
+        if (scheduleDaysOfWeek.contains(today)) {
+            // 如果今天是执行日，检查当前时间是否已过计划执行时间
+            long delayForToday = calculateDelayForDaily(now);
+            if (delayForToday > 0) {
+                // 如果还没到计划时间，返回今天的延迟
+                return delayForToday;
+            }
+        }
+
         int daysUntilNextCheck = scheduleDaysOfWeek.stream()
                 .sorted()
-                .filter(dayOfWeek -> dayOfWeek >= today)
+                .filter(dayOfWeek -> dayOfWeek > today)
+                .map(dayOfWeek -> dayOfWeek - today)
                 .findFirst()
-                .orElse(scheduleDaysOfWeek.get(0)) - today;
+                .orElse(7 + scheduleDaysOfWeek.get(0) - today);
 
-        // If the next check date is in the next week
-        if (daysUntilNextCheck < 0) {
-            daysUntilNextCheck += 7; // days left in the current week
-        }
+        int hourOfDay = Integer.parseInt(checkTime.split(":")[0]);
+        int minute = Integer.parseInt(checkTime.split(":")[1]);
 
         Calendar nextCheck = (Calendar) now.clone();
         nextCheck.add(Calendar.DAY_OF_WEEK, daysUntilNextCheck);
-        nextCheck.set(Calendar.HOUR_OF_DAY, 0);
-        nextCheck.set(Calendar.MINUTE, 0);
+        nextCheck.set(Calendar.HOUR_OF_DAY, hourOfDay);
+        nextCheck.set(Calendar.MINUTE, minute);
         nextCheck.set(Calendar.SECOND, 0);
         nextCheck.set(Calendar.MILLISECOND, 0);
 
-        return (nextCheck.getTimeInMillis() - now.getTimeInMillis()) / 50; // Ticks until the next check
+        return (nextCheck.getTimeInMillis() - now.getTimeInMillis()) / 50; // 返回ticks
     }
 
-    private long calculateInitialMonthlyDelay() {
-        Calendar now = Calendar.getInstance();
+    private long calculateDelayForMonthly(Calendar now) {
         int dayOfMonth = now.get(Calendar.DAY_OF_MONTH);
-        int daysUntilNextCheck = scheduleDatesOfMonth.stream()
-                .filter(date -> date >= dayOfMonth)
-                .findFirst()
-                .orElse(scheduleDatesOfMonth.get(0)) - dayOfMonth;
-
-        // If the next check date is in the next month
-        if (daysUntilNextCheck < 0) {
-            daysUntilNextCheck += now.getActualMaximum(Calendar.DAY_OF_MONTH); // days left in the current month
+        if (scheduleDatesOfMonth.contains(dayOfMonth)) {
+            // 如果今天是执行日，检查当前时间是否已过计划执行时间
+            long delayForToday = calculateDelayForDaily(now);
+            if (delayForToday > 0) {
+                // 如果还没到计划时间，返回今天的延迟
+                return delayForToday;
+            }
         }
+        int daysUntilNextCheck = scheduleDatesOfMonth.stream()
+                .filter(date -> date > dayOfMonth)
+                .map(date -> date - dayOfMonth)
+                .findFirst()
+                .orElse(scheduleDatesOfMonth.get(0) + now.getActualMaximum(Calendar.DAY_OF_MONTH) - dayOfMonth);
+
+        int hourOfDay = Integer.parseInt(checkTime.split(":")[0]);
+        int minute = Integer.parseInt(checkTime.split(":")[1]);
 
         Calendar nextCheck = (Calendar) now.clone();
         nextCheck.add(Calendar.DAY_OF_MONTH, daysUntilNextCheck);
-        nextCheck.set(Calendar.HOUR_OF_DAY, 0);
-        nextCheck.set(Calendar.MINUTE, 0);
+        nextCheck.set(Calendar.HOUR_OF_DAY, hourOfDay);
+        nextCheck.set(Calendar.MINUTE, minute);
         nextCheck.set(Calendar.SECOND, 0);
         nextCheck.set(Calendar.MILLISECOND, 0);
 
-        return (nextCheck.getTimeInMillis() - now.getTimeInMillis()) / 50; // Ticks until the next check
+        return (nextCheck.getTimeInMillis() - now.getTimeInMillis()) / 50; // 返回ticks
     }
 
-    private void scheduleDailyChecks(int hourOfDay, int minute) {
-        // Calculate initial delay
-        long initialDelay = calculateInitialDailyDelay(hourOfDay, minute);
-        long ticksPerDay = 20L * 60 * 60 * 24;
 
-        Bukkit.getScheduler().scheduleSyncRepeatingTask(this, () -> {
-            // Your daily check code here
-            checkAll(null); // Replace null with the actual sender, if available
-        }, initialDelay, ticksPerDay); // Run task every day
-    }
-    private void scheduleWeeklyChecks() {
-        long ticksPerWeek = 20L * 60 * 60 * 24 * 7;
-        Bukkit.getScheduler().scheduleSyncRepeatingTask(this, () -> {
-            Calendar now = Calendar.getInstance();
-            int today = now.get(Calendar.DAY_OF_WEEK);
-            if (scheduleDaysOfWeek.contains(today)) {
-                checkAll(null); // Replace null with the actual sender, if available
-            }
-        }, calculateInitialWeeklyDelay(), ticksPerWeek); // Adjust delay for weekly
-    }
+    private void scheduleCheck(long delay) {
+        Bukkit.getScheduler().scheduleSyncDelayedTask(this, () -> {
+            checkAll(null); // 运行任务
 
-    private void scheduleMonthlyChecks() {
-        long ticksPerMonth = 20L * 60 * 60 * 24 * 30; // Rough approximation
-        Bukkit.getScheduler().scheduleSyncRepeatingTask(this, () -> {
-            Calendar now = Calendar.getInstance();
-            int today = now.get(Calendar.DATE);
-            if (scheduleDatesOfMonth.contains(today)) {
-                checkAll(null); // Replace null with the actual sender, if available
-            }
-        }, calculateInitialMonthlyDelay(), ticksPerMonth); // Adjust for monthly
+            // 任务完成后，计划下一个任务
+            scheduleCheck(calculateNextDelay());
+        }, delay);
     }
 
     public void checkAll(CommandSender sender) {
