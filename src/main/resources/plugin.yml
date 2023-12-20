@@ -6,6 +6,7 @@ description: This plugin deducts money from inactive players' accounts using Vau
 author: angushushu
 website: angushushu.com
 depend: [Vault]
+softdepend: [Essentials]
 commands:
   checkall:
     description: Clean or deduct all inactive players.
