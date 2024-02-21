@@ -1,10 +1,10 @@
 # EcoBalancer
 该插件用于伤害方块叉服务器统治阶级与玩家之间的感情<br>
 前置插件：Vault<br>
-理论支持1.12-1.20（只在1.19和1.20测试过）<br>
+理论支持1.12-1.20<br>
 Brutal punishment toward inactive players of CubeX<br>
 prerequisite: Vault<br>
-Theoretically support 1.12-1.20 (only tested on 1.19 & 1.20)
+Theoretically support 1.12-1.20
 
 ### /checkall
 遍历并清洗全部离线玩家的余额<br>
