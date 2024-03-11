@@ -7,11 +7,11 @@ messages:
     help: '&f/ecobal help &6- Help'
     checkall: '&f/checkall &6- Check and clean all player balances'
     checkplayer: '&f/checkplayer <player> &6- Check and clean a single player balance'
-    checkrecords: '&f/checkrecords &6- View tax operation records'
-    checkrecord: '&f/checkrecord [alphabet|deduction] <operation_id> &6- View player balance change records'
+    checkrecords: '&f/checkrecords [page] &6- View tax operation records'
+    checkrecord: '&f/checkrecord <operation_id> [alphabet|deduction] [page] &6- View player balance change records'
     restore: '&f/restore <operation_id> &6- Restore operation'
     stats: '&f/stats <number of bars> [low] [up] &6- Show descriptive statistics'
-    interval: '&f/interval [alphabet|balance] [low] [up] &6- Show players in the specified interval'
+    interval: '&f/interval [alphabet|balance] [low] [up] [page] &6- Show players in the specified interval'
     perc: '&f/perc <balance> [low] [up] &6- Show player balance percentile'
     reload: '&f/ecobal reload &6- Reload configuration file'
   help_footer: '&7&oFrom &c&lCube&f&lX&7&o ruling class toolkit'
@@ -39,7 +39,8 @@ messages:
   records_header: "&f&lTax Operation Records:"
   records_operation: "&7[%restored%] &e%type% &f%time% &7%deduction_amount% &r[%operation_id%]"
   records_page: "%prev% &ePage &f%page%&e, total &f%total% &epages %next%"
-  records_footer: "&7&oUse /checkrecords <page> to view more."
+  records_click: "&7点击查看详细信息。"
+  records_footer: "&7&oUse /checkrecords [page] to view more."
   records_error: "&cAn error occurred: %error%"
   # record
   record_usage: "&6Usage: &f/checkrecord <operation ID> [page]"
@@ -47,7 +48,7 @@ messages:
   record_all_header: "&6Details of operation &4%operation_id% &6(server-wide check):"
   record_all_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction%"
   record_page: "%prev% &fPage &4%page%&f, total &4%total% &fpages %next%"
-  record_footer: "&7&oUse /checkrecords <operation ID> [page] to view more."
+  record_footer: "&7&oUse /checkrecord <operation_id> [alphabet|deduction] [page] to view more."
   record_player_header: "&aDetails of operation %operation_id% (player check):"
   record_player_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction%"
   record_operation_not_found: "&cOperation not found!"
@@ -75,7 +76,7 @@ messages:
   stats_mean_median: "Mean: &e%mean% &fMedian: &e%median%"
   stats_sd: "Standard Deviation: &e%sd%"
   # intervalplayer
-  interval_usage: "&f/intervalplayer [low] [up] &6- Show players in the specified interval"
+  interval_usage: "&f/intervalplayer [balance|alphabet] [low] [up] &6- Show players in the specified interval"
   interval_limits: "&6Use '_' to indicate unlimited."
   interval_invalid_args: "&cInvalid arguments. &fPlease use numbers or '_' to limit the range."
   interval_collecting: "&7Collecting player balance information..."
@@ -90,7 +91,7 @@ messages:
   perc_invalid_args: "&cInvalid arguments. &fPlease use numbers or '_' to limit the range."
   perc_success: "&6Balance &e%balance% &6is at the &e%percentile%%&6 percentile in the &e%low% - %up% &6interval."
   # taxaccount
-  tax_account_enabled: "&6Tax account is &aenabled.\n&6Tax account name is &6%tax_account_name%&6.\n&6Tax account balance is &6%tax_account_balance%&6."
+  tax_account_enabled: "%prefix\n&6Tax account is &aenabled.\n&6Tax account name is &6%tax_account_name%&6.\n&6Tax account balance is &6%tax_account_balance%&6."
   tax_account_disabled: "&6Tax account is &cdisabled."
   # sql
   sql_save_error: "&cUnable to save record:"

@@ -133,13 +133,13 @@ public class CheckRecordCommand implements CommandExecutor {
                                         } else {
                                             nextPage.setText(plugin.getFormattedMessage("messages.no_next_page", null));
                                         }
-                                        placeholders.put("prev", previouwPage.toPlainText());
-                                        placeholders.put("next", nextPage.toPlainText());
+                                        pagePlaceholders.put("prev", previouwPage.toPlainText());
+                                        pagePlaceholders.put("next", nextPage.toPlainText());
 
-                                        TextComponent message = plugin.getFormattedMessage("messages.record_page", placeholders, new String[]{"prev", "next"}, new TextComponent[]{previouwPage, nextPage});
+                                        TextComponent message = plugin.getFormattedMessage("messages.record_page", pagePlaceholders, new String[]{"prev", "next"}, new TextComponent[]{previouwPage, nextPage});
                                         sender.spigot().sendMessage(message);
 
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_footer", pagePlaceholders));
+                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_footer", null));
                                     }
                                 }
                             }

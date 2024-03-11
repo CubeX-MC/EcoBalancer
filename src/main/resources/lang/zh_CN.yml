@@ -7,11 +7,11 @@ messages:
     help: '&f/ecobal help &6- 帮助'
     checkall: '&f/checkall &6- 检查并清洗全部玩家余额'
     checkplayer: '&f/checkplayer <player> &6- 检查并清洗单个玩家余额'
-    checkrecords: '&f/checkrecords &6- 查看税收操作记录'
-    checkrecord: '&f/checkrecord [alphabet|deduction] <operation_id> &6- 查看玩家余额变动记录'
+    checkrecords: '&f/checkrecords [page] &6- 查看税收操作记录'
+    checkrecord: '&f/checkrecord <operation_id> [alphabet|deduction] [page] &6- 查看玩家余额变动记录'
     restore: '&f/restore <operation_id> &6- 恢复操作'
     stats: '&f/stats <number of bars> [low] [up] &6- 显示描述性统计'
-    interval: '&f/interval [alphabet|balance] [low] [up] &6- 显示指定区间的玩家'
+    interval: '&f/interval [alphabet|balance] [low] [up] [page] &6- 显示指定区间的玩家'
     perc: '&f/perc <balance> [low] [up] &6- 显示玩家余额百分位'
     reload: '&f/ecobal reload &6- 重载配置文件'
   help_footer: '&7&o来自&c&lCube&f&lX&7&o统治阶级工具包'
@@ -38,6 +38,7 @@ messages:
   invalid_page: "&c无效的页码。"
   records_header: "&f&l税收操作记录:"
   records_operation: "&7[%restored%] &e%type% &f%time% &7%deduction_amount% &r[%operation_id%]"
+  records_click: "&7点击查看详细信息。"
   records_page: "%prev% &e第 &f%page% &e页,共 &f%total% &e页 %next%"
   records_footer: "&7&o使用 /checkrecords <页码> 查看更多。"
   records_error: "&c发生错误：%error%"
@@ -90,7 +91,7 @@ messages:
   perc_invalid_args: "&c无效的参数。 &f请使用数字或'_'限制范围。"
   perc_success: "&6余额 &e%balance% &6在 &e%low% - %up% &6区间中的百分位为 &e%percentile%%&6。"
   # taxaccount
-  tax_account_enabled: "&6税金账户&a已启用。\n&6税金账户名称为 &6%tax_account_name%&6。\n&6税金账户余额为 &6%tax_account_balance%&6。"
+  tax_account_enabled: "%prefix\n%&6税金账户&a已启用。\n&6税金账户名称为 &6%tax_account_name%&6。\n&6税金账户余额为 &6%tax_account_balance%&6。"
   tax_account_disabled: "&6税金账户&c未启用。"
   # sql
   sql_save_error: "&c无法保存记录:"

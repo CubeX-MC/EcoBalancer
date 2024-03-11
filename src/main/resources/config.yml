@@ -1,4 +1,4 @@
-language: 'zh_CN' # 语言 # Language
+language: 'en_US' # 语言 # Language en_US, zh_CN
 info-on-login: true # 登录时显示用户信息 # Show user info on login
 record-retention-days: 30 # 保留记录天数 # Record retention days
 check-time: "20:00"  # 格式为 HH:mm # Time format is HH:mm

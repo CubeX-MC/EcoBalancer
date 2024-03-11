@@ -731,9 +731,13 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     private double calculateMedian(List<Double> values) {
+        System.out.println("before sort");
         Collections.sort(values);
+        System.out.println("after sort");
         int size = values.size();
-        if (size % 2 == 0) {
+        if (size == 0) {
+            return 0;
+        } else if (size % 2 == 0) {
             return (values.get(size / 2 - 1) + values.get(size / 2)) / 2;
         } else {
             return values.get(size / 2);
@@ -741,28 +745,14 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     private double calculateStandardDeviation(List<Double> values, double mean) {
+        if (values.size() == 0) {
+            return 0;
+        }
         double sum = 0;
         for (double value : values) {
             sum += Math.pow(value - mean, 2);
         }
         return Math.sqrt(sum / values.size());
-    }
-
-    private double calculateMode(List<Double> values) {
-        Map<Double, Integer> frequencyMap = new HashMap<>();
-        int maxFrequency = 0;
-        double mode = 0;
-
-        for (double value : values) {
-            int frequency = frequencyMap.getOrDefault(value, 0) + 1;
-            frequencyMap.put(value, frequency);
-            if (frequency > maxFrequency) {
-                maxFrequency = frequency;
-                mode = value;
-            }
-        }
-
-        return mode;
     }
 
     private String formatNumber(double number) {

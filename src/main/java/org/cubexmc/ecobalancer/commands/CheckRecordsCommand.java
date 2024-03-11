@@ -69,7 +69,7 @@ public class CheckRecordsCommand implements CommandExecutor {
                         // 创建可点击的 operation_id 组件
                         TextComponent operationIdComponent = new TextComponent(String.valueOf(id));
                         operationIdComponent.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecord " + id));
-                        operationIdComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("点击查看详情").create()));
+                        operationIdComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder(plugin.getFormattedMessage("messages.records_click",null)).create()));
                         TextComponent messageFormat = plugin.getFormattedMessage("messages.records_operation", placeholders, new String[]{"operation_id"}, new TextComponent[]{operationIdComponent});
 
                         // 发送拼接后的文本组件
