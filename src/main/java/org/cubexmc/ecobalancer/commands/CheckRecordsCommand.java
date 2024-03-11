@@ -9,10 +9,14 @@ import org.cubexmc.ecobalancer.EcoBalancer;
 
 import java.io.File;
 import java.sql.*;
+import java.sql.Date;
 import java.text.SimpleDateFormat;
-import java.util.HashMap;
-import java.util.UUID;
-import java.util.Map;
+import java.util.*;
+
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.ComponentBuilder;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.TextComponent;
 
 public class CheckRecordsCommand implements CommandExecutor {
     private final EcoBalancer plugin;
@@ -62,9 +66,14 @@ public class CheckRecordsCommand implements CommandExecutor {
                         placeholders.put("operation_id", String.valueOf(id));
                         placeholders.put("restored", isRestored ? "x" : " ");
 
-                        sender.sendMessage(plugin.getFormattedMessage("messages.prefix", null));
-                        String message = plugin.getFormattedMessage("messages.records_operation", placeholders);
-                        sender.sendMessage(message);
+                        // 创建可点击的 operation_id 组件
+                        TextComponent operationIdComponent = new TextComponent(String.valueOf(id));
+                        operationIdComponent.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecord " + id));
+                        operationIdComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("点击查看详情").create()));
+                        TextComponent messageFormat = plugin.getFormattedMessage("messages.records_operation", placeholders, new String[]{"operation_id"}, new TextComponent[]{operationIdComponent});
+
+                        // 发送拼接后的文本组件
+                        sender.spigot().sendMessage(messageFormat);
                     }
                 }
             }
@@ -77,7 +86,27 @@ public class CheckRecordsCommand implements CommandExecutor {
                         Map<String, String> placeholders = new HashMap<>();
                         placeholders.put("page", String.valueOf(pageNumber));
                         placeholders.put("total", String.valueOf(totalPages));
-                        sender.sendMessage(plugin.getFormattedMessage("messages.records_page", placeholders));
+
+                        // add clickable next and previous page messages
+                        TextComponent previouwPage = new TextComponent();
+                        TextComponent nextPage = new TextComponent();
+                        if (pageNumber > 1) {
+                            previouwPage.setText(plugin.getFormattedMessage("messages.prev_page", null));
+                            previouwPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecords " + (pageNumber - 1)));
+                        } else {
+                            previouwPage.setText(plugin.getFormattedMessage("messages.no_prev_page", null));
+                        }
+                        if (pageNumber < totalPages) {
+                            nextPage.setText(plugin.getFormattedMessage("messages.next_page", null));
+                            nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecords " + (pageNumber + 1)));
+                        } else {
+                            nextPage.setText(plugin.getFormattedMessage("messages.no_next_page", null));
+                        }
+                        placeholders.put("prev", previouwPage.toPlainText());
+                        placeholders.put("next", nextPage.toPlainText());
+
+                        TextComponent message = plugin.getFormattedMessage("messages.records_page", placeholders, new String[]{"prev", "next"}, new TextComponent[]{previouwPage, nextPage});
+                        sender.spigot().sendMessage(message);
                         sender.sendMessage(plugin.getFormattedMessage("messages.records_footer", null));
                     }
                 }

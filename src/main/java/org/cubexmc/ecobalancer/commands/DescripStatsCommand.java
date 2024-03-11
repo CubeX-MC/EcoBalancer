@@ -23,22 +23,26 @@ public class DescripStatsCommand implements CommandExecutor {
 
         int numBars;
         double low = Double.NEGATIVE_INFINITY;
-        double high = Double.POSITIVE_INFINITY;
+        double up = Double.POSITIVE_INFINITY;
 
         try {
             numBars = Integer.parseInt(args[0]);
+            if (numBars < 1) {
+                sender.sendMessage(plugin.getFormattedMessage("messages.stats_invalid_number_of_bars", null));
+                return false;
+            }
             if (args.length >= 2) {
                 low = args[1].equals("_") ? Double.NEGATIVE_INFINITY : Double.parseDouble(args[1]);
             }
             if (args.length == 3) {
-                high = args[2].equals("_") ? Double.POSITIVE_INFINITY : Double.parseDouble(args[2]);
+                up = args[2].equals("_") ? Double.POSITIVE_INFINITY : Double.parseDouble(args[2]);
             }
         } catch (NumberFormatException e) {
             sender.sendMessage(plugin.getFormattedMessage("messages.stats_invalid_args", null));
             return false;
         }
 
-        plugin.generateHistogram(sender, numBars, low, high);
+        plugin.generateHistogram(sender, numBars, low, up);
         return true;
     }
 }

@@ -11,6 +11,7 @@ org\cubexmc\ecobalancer\metrics\Metrics$AdvancedPie.class
 org\cubexmc\ecobalancer\commands\CheckAllCommand.class
 org\cubexmc\ecobalancer\metrics\Metrics$SimplePie.class
 org\cubexmc\ecobalancer\metrics\Metrics$DrilldownPie.class
+org\cubexmc\ecobalancer\commands\IntervalCommand.class
 org\cubexmc\ecobalancer\EcoBalancer$1BatchRunnable.class
 org\cubexmc\ecobalancer\listeners\AdminLoginListener.class
 org\cubexmc\ecobalancer\commands\DescripStatsCommand.class

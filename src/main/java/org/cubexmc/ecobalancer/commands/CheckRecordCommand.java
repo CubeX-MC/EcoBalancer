@@ -1,5 +1,7 @@
 package org.cubexmc.ecobalancer.commands;
 
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
@@ -23,7 +25,7 @@ public class CheckRecordCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length < 1 || args.length > 2) {
+        if (args.length < 1 || args.length > 3) {
             sender.sendMessage(plugin.getFormattedMessage("messages.record_usage", null));
             return true;
         }
@@ -37,12 +39,25 @@ public class CheckRecordCommand implements CommandExecutor {
         }
 
         int page = 1;
-        if (args.length == 2) {
-            try {
-                page = Integer.parseInt(args[1]);
-            } catch (NumberFormatException e) {
-                sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
-                return true;
+        String sortBy = "deduction";
+        if (args.length >= 2) {
+            if (args[1].equalsIgnoreCase("alphabet") || args[1].equalsIgnoreCase("deduction")) {
+                sortBy = args[1].toLowerCase();
+                if (args.length == 3) {
+                    try {
+                        page = Integer.parseInt(args[2]);
+                    } catch (NumberFormatException e) {
+                        sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
+                        return true;
+                    }
+                }
+            } else {
+                try {
+                    page = Integer.parseInt(args[1]);
+                } catch (NumberFormatException e) {
+                    sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
+                    return true;
+                }
             }
         }
 
@@ -67,7 +82,7 @@ public class CheckRecordCommand implements CommandExecutor {
                             int pageSize = 10;
                             int offset = (page - 1) * pageSize;
 
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? ORDER BY deduction DESC LIMIT ? OFFSET ?")) {
+                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? ORDER BY " + (sortBy.equals("alphabet") ? "player_name" : "deduction DESC") + " LIMIT ? OFFSET ?")) {
                                 selectStatement.setInt(1, operationId);
                                 selectStatement.setInt(2, pageSize);
                                 selectStatement.setInt(3, offset);
@@ -90,13 +105,6 @@ public class CheckRecordCommand implements CommandExecutor {
                                         sender.sendMessage(message);
                                         count++;
                                     }
-
-                                    if (count == pageSize) {
-                                        Map<String, String> nextPlaceholders = new HashMap<>();
-                                        nextPlaceholders.put("operation_id", String.valueOf(operationId));
-                                        nextPlaceholders.put("page", String.valueOf(page + 1));
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_all_next", nextPlaceholders));
-                                    }
                                 }
                             }
 
@@ -109,13 +117,35 @@ public class CheckRecordCommand implements CommandExecutor {
                                         Map<String, String> pagePlaceholders = new HashMap<>();
                                         pagePlaceholders.put("page", String.valueOf(page));
                                         pagePlaceholders.put("total", String.valueOf(totalPages));
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_all_page", pagePlaceholders));
+
+                                        // add clickable next and previous page messages
+                                        TextComponent previouwPage = new TextComponent();
+                                        TextComponent nextPage = new TextComponent();
+                                        if (page > 1) {
+                                            previouwPage.setText(plugin.getFormattedMessage("messages.prev_page", null));
+                                            previouwPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecord " + operationId + " " + (page - 1)));
+                                        } else {
+                                            previouwPage.setText(plugin.getFormattedMessage("messages.no_prev_page", null));
+                                        }
+                                        if (page < totalPages) {
+                                            nextPage.setText(plugin.getFormattedMessage("messages.next_page", null));
+                                            nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecord " + operationId + " " + (page + 1)));
+                                        } else {
+                                            nextPage.setText(plugin.getFormattedMessage("messages.no_next_page", null));
+                                        }
+                                        placeholders.put("prev", previouwPage.toPlainText());
+                                        placeholders.put("next", nextPage.toPlainText());
+
+                                        TextComponent message = plugin.getFormattedMessage("messages.record_page", placeholders, new String[]{"prev", "next"}, new TextComponent[]{previouwPage, nextPage});
+                                        sender.spigot().sendMessage(message);
+
+                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_footer", pagePlaceholders));
                                     }
                                 }
                             }
                         } else {
                             // 查询单个玩家的记录
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ?")) {
+                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? AND deduction != 0.0")) {
                                 selectStatement.setInt(1, operationId);
                                 try (ResultSet allRecords = selectStatement.executeQuery()) {
                                     if (allRecords.next()) {

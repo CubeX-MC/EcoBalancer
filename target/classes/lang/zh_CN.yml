@@ -4,75 +4,94 @@ messages:
   reload_success: '%prefix% &a配置文件已成功重载。'
   # help
   commands:
-    help: '&e/ecobal help &f- 帮助'
-    checkall: '&e/checkall &f- 检查并清洗全部玩家余额'
-    checkplayer: '&e/checkplayer <player> &f- 检查并清洗单个玩家余额'
-    checkrecords: '&e/checkrecords &f- 查看税收操作记录'
-    checkrecord: '&e/checkrecord <operation_id> &f- 查看玩家余额变动记录'
-    restore: '&e/restore <operation_id> &f- 恢复操作'
-    stats: '&e/stats <number of bars> [low] [up] &f- 显示描述性统计'
-    perc: '&e/perc <balance> [low] [up] &f- 显示玩家余额百分位'
-    reload: '&e/ecobal reload &f- 重载配置文件'
-  help_footer: '&7&o来自&cCube&fX统治阶级工具包'
-  help_header: '&f&lEcoBalancer 帮助:'
+    help: '&f/ecobal help &6- 帮助'
+    checkall: '&f/checkall &6- 检查并清洗全部玩家余额'
+    checkplayer: '&f/checkplayer <player> &6- 检查并清洗单个玩家余额'
+    checkrecords: '&f/checkrecords &6- 查看税收操作记录'
+    checkrecord: '&f/checkrecord [alphabet|deduction] <operation_id> &6- 查看玩家余额变动记录'
+    restore: '&f/restore <operation_id> &6- 恢复操作'
+    stats: '&f/stats <number of bars> [low] [up] &6- 显示描述性统计'
+    interval: '&f/interval [alphabet|balance] [low] [up] &6- 显示指定区间的玩家'
+    perc: '&f/perc <balance> [low] [up] &6- 显示玩家余额百分位'
+    reload: '&f/ecobal reload &6- 重载配置文件'
+  help_footer: '&7&o来自&c&lCube&f&lX&7&o统治阶级工具包'
+  help_header: '&e&lEcoBalancer &f帮助:'
+  prev_page: "&6上一页"
+  next_page: "&6下一页"
+  no_prev_page: "   "
+  no_next_page: "   "
   # check
-  scanning_offline_players: '&a正在扫描离线玩家...'
-  enter_player_name_or_use_checkall: '&a请输入玩家名称或使用/checkall'
+  scanning_offline_players: '&7正在扫描离线玩家&f...'
+  enter_player_name_or_use_checkall: '&6请输入玩家名称或使用&f/checkall'
   # ecobal
-  negative_balance: "&e玩家 &6%player% &e的余额为 &6%balance%&e。\n&e已将余额置为 &6%new_balance%&e。"
-  offline_extreme: "&e玩家 &6%player% &e已经离线 &6%days_offline% &e天，极不活跃。\n&e已将余额置为 &6%new_balance%&e。"
-  offline_moderate: "&e玩家 &6%player% &e已经离线 &6%days_offline% &e天，较不活跃。\n&e已从余额中扣除 &6%deduction%&e。"
-  offline_active: "&e玩家 &6%player% &e仅离线 &6%days_offline% &e天，较活跃。"
-  deduction_made: "&e已从 &6%player% &e的余额中扣除 &6%deduction%&e。"
-  players_processing: "&7处理了 &6%batch% &7个玩家，共处理：&6%end%"
+  negative_balance: "&6玩家 &4%player% &6的余额为 &6%balance%&6。\n&6已将余额置为 &6%new_balance%&6。"
+  offline_extreme: "&6玩家 &4%player% &6已经离线 &4%days_offline% &6天，&c极不活跃。\n&6已将余额置为 &6%new_balance%&6。"
+  offline_moderate: "&6玩家 &4%player% &6已经离线 &4%days_offline% &6天，&e较不活跃。\n&6已从余额中扣除 &6%deduction%&6。"
+  offline_active: "&6玩家 &4%player% &6仅离线 &4%days_offline% &6天，&a较活跃。"
+  deduction_made: "&6已从 &4%player% &6的余额中扣除 &6%deduction%&6。"
+  players_processing: "&7处理了 &4%batch% &7个玩家，共处理：&4%end%"
   players_processed: "&7共&6%end% &7个玩家，处理总数：&6%end%"
-  all_players_processed: "&a所有玩家都已被洗劫。"
-  zero_balance: "&e玩家 &6%player% &e的余额为 &60&e。"
-  player_not_found: "&c没找到该玩家 (大小写敏感)。"
+  all_players_processed: "&a所有玩家都已被洗劫:D"
+  zero_balance: "&6玩家 &4%player% &6的余额为 &c0&6!"
+  player_not_found: "&c没找到该玩家 &f(大小写敏感)。"
   # records
   invalid_page: "&c无效的页码。"
   records_header: "&f&l税收操作记录:"
-  records_operation: "[%restored%] %type% %time% %deduction_amount% [%operation_id%]"
-  records_page: "第 %page% 页,共 %total% 页"
+  records_operation: "&7[%restored%] &e%type% &f%time% &7%deduction_amount% &r[%operation_id%]"
+  records_page: "%prev% &e第 &f%page% &e页,共 &f%total% &e页 %next%"
   records_footer: "&7&o使用 /checkrecords <页码> 查看更多。"
   records_error: "&c发生错误：%error%"
   # record
-  record_usage: "用法: /checkrecord <操作ID> [页码]"
-  record_invalid_id: "无效的操作ID!"
-  record_all_header: "操作 %operation_id% 的详细信息 (全服检查):"
-  record_all_detail: "[%player%] %old_balance%→%new_balance% %deduction%"
-  record_all_next: "输入 /checkrecord %operation_id% %page% 查看下一页"
-  record_all_page: "第 %page% 页,共 %total% 页"
-  record_player_header: "操作 %operation_id% 的详细信息 (玩家检查):"
-  record_player_detail: "[%player%] %old_balance%→%new_balance% %deduction%"
-  record_operation_not_found: "未找到操作!"
-  record_not_found: "未找到记录!"
+  record_usage: "&6用法: &f/checkrecord <操作ID> [页码]"
+  record_invalid_id: "&c无效的操作ID!"
+  record_all_header: "&6操作 &4%operation_id% &6的详细信息 &f(全服检查):"
+  record_all_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction%"
+  record_page: "%prev% &f第 &4%page% &f页,共 &4%total% &f页 %next%"
+  record_footer: "&7&o使用 /checkrecords <操作ID> [页码] 查看更多。"
+  record_player_header: "&a操作 %operation_id% 的详细信息 (玩家检查):"
+  record_player_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction%"
+  record_operation_not_found: "&c未找到操作!"
+  record_not_found: "&c未找到记录!"
   record_error: "&c发生错误：%error%"
   # restore
-  restore_usage: "用法: /restore <操作ID>"
-  restoring_all: "正在恢复操作 %operation_id% (全服检查)..."
-  restored_all: "操作 %operation_id% 已恢复 (全服检查)!"
-  restored_player: "操作 %operation_id% 已恢复 (玩家检查)!"
-  restore_invalid_id: "无效的操作ID!"
+  restore_usage: "&6用法: &f/restore <操作ID>"
+  restoring_all: "&7正在恢复操作 %operation_id% (全服检查)..."
+  restored_all: "&a操作 %operation_id% 已恢复 (全服检查)!"
+  restored_player: "&a操作 %operation_id% 已恢复 (玩家检查)!"
+  restore_invalid_id: "&c无效的操作ID!"
   restore_error: "&c发生错误：%error%"
-  restore_operation_not_found: "未找到操作!"
-  restore_not_found: "未找到记录!"
+  restore_operation_not_found: "&c未找到操作!"
+  restore_not_found: "&c未找到记录!"
   # stats
-  stats_usage: "&e/stats <number_of_bars> [low] [up] &f- 显示描述性统计"
-  stats_limits: "&e使用 '_' 表示无限制。"
-  stats_invalid_args: "&c无效的参数。 请使用数字或'_'限制范围。"
-  stats_min_max: "最小值: %min% 最大值: %max%"
-  stats_hist_drawing: "§6正在统计...§r"
+  stats_usage: "&f/stats <number_of_bars> [low] [up] &6- 显示描述性统计"
+  stats_limits: "&6使用 '_' 表示无限制。"
+  stats_invalid_number_of_bars: "&c条数不能小于1。"
+  stats_invalid_args: "&c无效的参数, 请使用数字或'_'限制范围。"
+  stats_min_max: "最小值: &e%min% &f最大值: &e%max%"
+  stats_bar: "%bar% &e%frequency% &7(%low% - %up%)"
+  stats_hist_drawing: "§7正在统计...§r"
   stats_hist_header: "§6玩家资产直方图:§r"
-  stats_mean_median: "均值: %mean% 中位数: %median%"
-  stats_sd: "标准差: %sd%"
+  stats_check_interval: "§7查看区间: §e%low% - %up%§r"
+  stats_mean_median: "均值: &e%mean% &f中位数: &e%median%"
+  stats_sd: "标准差: &e%sd%"
+  # intervalplayer
+  interval_usage: "&f/intervalplayer [low] [up] &6- 显示指定区间的玩家"
+  interval_limits: "&6使用 '_' 表示无限制。"
+  interval_invalid_args: "&c无效的参数。 &f请使用数字或'_'限制范围。"
+  interval_collecting: "&7正在收集玩家余额信息..."
+  interval_sorting: "&7正在排序..."
+  interval_header: "&6玩家余额区间为 &e%low% - %up% &6的玩家:"
+  interval_player: "&f%player% &6余额:&e%balance% &6离线:&e%days_offline% &6天"
+  interval_page: "%prev% &e第 &f%page% &e页,共 &f%total% &e页 %next%"
+  interval_footer: "&7&o使用 /interval <page> 查看更多。"
   # perc
-  perc_usage: "&e/perc <balance> [low] [up] &f- 显示余额对应的百分位"
-  perc_limits: "&e使用 '_' 表示无限制。"
-  perc_invalid_args: "&c无效的参数。 请使用数字或'_'限制范围。"
+  perc_usage: "&f/perc <balance> [low] [up] &6- 显示余额对应的百分位"
+  perc_limits: "&7使用 '_' 表示无限制。"
+  perc_invalid_args: "&c无效的参数。 &f请使用数字或'_'限制范围。"
+  perc_success: "&6余额 &e%balance% &6在 &e%low% - %up% &6区间中的百分位为 &e%percentile%%&6。"
   # taxaccount
-  tax_account_enabled: "&e税金账户已启用。\n&e税金账户名称为 &6%tax_account_name%&e。\n&e税金账户余额为 &6%tax_account_balance%&e。"
-  tax_account_disabled: "&e税金账户未启用。"
+  tax_account_enabled: "&6税金账户&a已启用。\n&6税金账户名称为 &6%tax_account_name%&6。\n&6税金账户余额为 &6%tax_account_balance%&6。"
+  tax_account_disabled: "&6税金账户&c未启用。"
   # sql
-  sql_save_error: "无法保存记录:"
-  sql_clean_error: "清洗玩家余额时发生错误:"
+  sql_save_error: "&c无法保存记录:"
+  sql_clean_error: "&c清洗玩家余额时发生错误:"

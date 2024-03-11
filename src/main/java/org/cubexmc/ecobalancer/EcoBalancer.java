@@ -1,5 +1,6 @@
 package org.cubexmc.ecobalancer;
 
+import net.md_5.bungee.api.chat.*;
 import net.milkbowl.vault.chat.Chat;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.permission.Permission;
@@ -140,6 +141,7 @@ public final class EcoBalancer extends JavaPlugin {
         getCommand("checkrecords").setExecutor(new CheckRecordsCommand(this));
         getCommand("checkrecord").setExecutor(new CheckRecordCommand(this));
         getCommand("restore").setExecutor(new RestoreCommand(this));
+        getCommand("interval").setExecutor(new IntervalCommand(this));
         displayAsciiArt();
         getLogger().info("EcoBalancer enabled!");
     }
@@ -226,10 +228,11 @@ public final class EcoBalancer extends JavaPlugin {
 
     private void loadLangFile() {
         // Load the language file based on config
-        String lang = getConfig().getString("lang", "zh_CN");
+        String lang = getConfig().getString("language", "en_US");
+        System.out.println("Loading language file: " + lang);
         File langFile = new File(getDataFolder(), "lang" + File.separator + lang + ".yml");
         if (!langFile.exists()) {
-            saveResource("lang/zh_CN.yml", false);
+            saveResource("lang" + File.separator + lang + ".yml", false);
         }
         langConfig = YamlConfiguration.loadConfiguration(langFile);
     }
@@ -248,6 +251,61 @@ public final class EcoBalancer extends JavaPlugin {
 
         return ChatColor.translateAlternateColorCodes('&', message);
     }
+
+    public TextComponent getFormattedMessage(String path, Map<String, String> placeholders, String[] clickablePlaceholders, TextComponent[] clickableComponents) {
+        if (placeholders == null) {
+            placeholders = new HashMap<>();
+        }
+        placeholders.put("prefix", messagePrefix);
+
+        String messageTemplate = langConfig.getString(path, "Message not found!");
+
+        // 初始化一个基础的TextComponent用于最终消息
+        TextComponent finalMessage = new TextComponent("");
+
+        // 替换除clickablePlaceholders外的所有占位符
+        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+            if (!Arrays.asList(clickablePlaceholders).contains(entry.getKey())) {
+                messageTemplate = messageTemplate.replace("%" + entry.getKey() + "%", entry.getValue());
+            }
+        }
+
+        // 分割消息模板
+        String[] messageParts = messageTemplate.split("%", -1);
+
+        for (int i = 0; i < messageParts.length; i++) {
+            String part = messageParts[i];
+
+            // 检查这部分是否匹配任何可点击的占位符
+            int placeholderIndex = -1;
+            for (int j = 0; j < clickablePlaceholders.length; j++) {
+                if (part.startsWith(clickablePlaceholders[j])) {
+                    placeholderIndex = j;
+                    break;
+                }
+            }
+
+            if (placeholderIndex != -1) {
+                // 如果这部分以一个可点击的占位符开始,添加相应的可点击组件
+                finalMessage.addExtra(clickableComponents[placeholderIndex]);
+
+                // 如果占位符后还有文本,作为普通文本添加
+                String remainingText = part.substring(clickablePlaceholders[placeholderIndex].length());
+                if (!remainingText.isEmpty()) {
+                    finalMessage.addExtra(new TextComponent(ChatColor.translateAlternateColorCodes('&', remainingText)));
+                }
+            } else {
+                // 如果这部分不是可点击的占位符,作为普通文本添加
+                if (!part.isEmpty()) {
+                    finalMessage.addExtra(new TextComponent(ChatColor.translateAlternateColorCodes('&', part)));
+                }
+            }
+        }
+
+        return finalMessage;
+    }
+
+
 
     @Override
     public void onDisable() {
@@ -337,7 +395,7 @@ public final class EcoBalancer extends JavaPlugin {
         if (balance < 0.0) {
             econ.depositPlayer(player, -1 * balance);
             placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
-
+            sendMessage(sender, "messages.negative_balance", placeholders, log);
         } else if (balance > 0.0) {
             if (deductBasedOnTime) {
                 // 计算玩家离线天数
@@ -600,7 +658,7 @@ public final class EcoBalancer extends JavaPlugin {
         }
     }
 
-    public void generateHistogram(CommandSender sender, int numBars, double low, double high) {
+    public void generateHistogram(CommandSender sender, int numBars, double low, double up) {
 
         sender.sendMessage(getFormattedMessage("messages.stats_hist_drawing", null));
         OfflinePlayer[] players = Bukkit.getOfflinePlayers();
@@ -609,7 +667,7 @@ public final class EcoBalancer extends JavaPlugin {
         for (OfflinePlayer player : players) {
             if (econ.hasAccount(player)) {
                 double balance = econ.getBalance(player);
-                if (balance >= low && balance <= high) {
+                if (balance >= low && balance <= up) {
                     balances.add(balance);
                 }
             }
@@ -633,7 +691,7 @@ public final class EcoBalancer extends JavaPlugin {
             histogram[barIndex]++;
         }
 
-        int maxBarLength = 50; // 可以根据需要调整这个值
+        int maxBarLength = 100; // 可以根据需要调整这个值
         int maxFrequency = Arrays.stream(histogram).max().orElse(0);
 
         sender.sendMessage(getFormattedMessage("messages.stats_hist_header", null));
@@ -642,8 +700,21 @@ public final class EcoBalancer extends JavaPlugin {
             double upperBound = lowerBound + barWidth;
             int barLength = (int) (((double) histogram[i] / maxFrequency) * maxBarLength);
             String bar = "§a" + StringUtils.repeat("▏", barLength) + "§r";
-            String interval = "§7(" + formatNumber(lowerBound) + " - " + formatNumber(upperBound) + ")§r";
-            sender.sendMessage(String.format("%s §e%d p§r %s", bar, histogram[i], interval));
+
+            // 创建一个TextComponent作为可点击的条
+
+            Map<String, String> intervalPlaceholders = new HashMap<>();
+            intervalPlaceholders.put("bar", bar);
+            intervalPlaceholders.put("frequency", Integer.toString(histogram[i]));
+            intervalPlaceholders.put("low", formatNumber(lowerBound));
+            intervalPlaceholders.put("up", formatNumber(upperBound));
+
+            TextComponent clickableBar = new TextComponent(bar);
+            clickableBar.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/interval balance " + lowerBound + " " + upperBound));
+            clickableBar.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder(getFormattedMessage("messages.stats_check_interval", intervalPlaceholders)).create()));
+
+            TextComponent message = getFormattedMessage("messages.stats_bar", intervalPlaceholders, new String[]{"bar"}, new TextComponent[]{clickableBar});
+            sender.spigot().sendMessage(message);
         }
 
         // Calculate and print additional statistics

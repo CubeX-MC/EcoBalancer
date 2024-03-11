@@ -22,11 +22,15 @@ commands:
     permission: ecobalancer.admin
   stats:
     description: Show descriptive statistics.
-    usage: /stats <number of bars>
+    usage: /stats <number of bars> [low] [up]
+    permission: ecobalancer.admin
+  interval:
+    description: List players' balance in a specific interval.
+    usage: /interval [low] [up]
     permission: ecobalancer.admin
   perc:
     description: Show percentile of players' balance.
-    usage: /perc <balance>
+    usage: /perc <balance> [low] [up]
     permission: ecobalancer.admin
   reload:
     description: Reload the configuration file.

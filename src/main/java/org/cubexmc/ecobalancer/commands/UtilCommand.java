@@ -35,6 +35,7 @@ public class UtilCommand implements CommandExecutor {
                     plugin.getFormattedMessage("messages.commands.checkrecord", null),
                     plugin.getFormattedMessage("messages.commands.restore", null),
                     plugin.getFormattedMessage("messages.commands.stats", null),
+                    plugin.getFormattedMessage("messages.commands.interval", null),
                     plugin.getFormattedMessage("messages.commands.perc", null),
                     plugin.getFormattedMessage("messages.commands.reload", null),
                     plugin.getFormattedMessage("messages.help_footer", null)

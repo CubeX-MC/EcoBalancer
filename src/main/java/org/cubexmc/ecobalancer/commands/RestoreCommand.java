@@ -53,7 +53,7 @@ public class RestoreCommand implements CommandExecutor {
                             // 提示正在恢复所有玩家的余额
                             sender.sendMessage(plugin.getFormattedMessage("messages.restoring_all", placeholders));
                             // 恢复所有玩家的余额
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ?")) {
+                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? AND deduction != 0.0")) {
                                 selectStatement.setInt(1, operationId);
                                 try (ResultSet allRecords = selectStatement.executeQuery()) {
                                     while (allRecords.next()) {
