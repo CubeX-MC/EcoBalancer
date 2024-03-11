@@ -21,23 +21,13 @@ public class CheckAllCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String s, String[] args) {
-        if (sender instanceof Player) {
-            Player player = (Player) sender;
-            if (!player.hasPermission("ecobalancer.admin")) {
-                player.sendMessage(plugin.getFormattedMessage("messages.no_permission", null));
-                return true;
-            }
-            if (args.length == 0) {
-                player.sendMessage(plugin.getFormattedMessage("messages.scanning_offline_players", null));
-                plugin.checkAll(sender);
-            }
-        } else if (sender.hasPermission("ecobalancer.admin")) {
+        if (sender instanceof Player || sender.hasPermission("ecobalancer.admin")) {
             if (args.length == 0) {
                 sender.sendMessage(plugin.getFormattedMessage("messages.scanning_offline_players", null));
                 plugin.checkAll(sender);
             }
+            return true;
         }
-
-        return true;
+        return false;
     }
 }

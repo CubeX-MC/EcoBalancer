@@ -1,5 +1,5 @@
 name: EcoBalancer
-version: '1.0-SNAPSHOT'
+version: '1.0.5'
 main: org.cubexmc.ecobalancer.EcoBalancer
 api-version: '1.13'
 description: This plugin deducts money from inactive players' accounts using Vault.
@@ -11,12 +11,38 @@ commands:
   checkall:
     description: Clean or deduct all inactive players.
     usage: /checkall
+    permission: ecobalancer.admin
   checkplayer:
     description: Clean or deduct a specific inactive player.
     usage: /checkplayer
+    permission: ecobalancer.admin
   ecobal:
     description: Utility command for EcoBalancer.
     usage: /ecobal <command>
+    permission: ecobalancer.admin
+  stats:
+    description: Show descriptive statistics.
+    usage: /stats <number of bars>
+    permission: ecobalancer.admin
+  perc:
+    description: Show percentile of players' balance.
+    usage: /perc <balance>
+    permission: ecobalancer.admin
+  reload:
+    description: Reload the configuration file.
+    usage: /ecobal reload
+    permission: ecobalancer.admin
+  checkrecords:
+    description: Show all operations.
+    usage: /checkrecords
+    permission: ecobalancer.admin
+  checkrecord:
+    description: Show detail of a specific operation.
+    usage: /checkrecord <operation_id>
+    permission: ecobalancer.admin
+  restore:
+    description: Restore a specific operation.
+    usage: /restore <operation_id>
     permission: ecobalancer.admin
 permissions:
   ecobalancer.admin:

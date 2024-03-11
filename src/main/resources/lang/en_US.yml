@@ -1,0 +1,77 @@
+prefix: '&7[&6EcoBalancer&7]&r'
+messages:
+  # reload
+  reload_success: '&aConfig file reloaded successfully.'
+  # help
+  commands:
+    help: '&e/ecobal help &f- Help'
+    checkall: '&e/checkall &f- Check and clean all player balances'
+    checkplayer: '&e/checkplayer <player> &f- Check and clean single player balance'
+    checkrecords: '&e/checkrecords &f- Check tax operation records'
+    checkrecord: '&e/checkrecord <operation_id> &f- Check player balance change records'
+    restore: '&e/restore <operation_id> &f- Restore operation'
+    stats: '&e/stats <number of bars> [low] [up] &f- Display descriptive statistics'
+    perc: '&e/perc <balance> [low] [up] &f- Display player balance percentile'
+    reload: '&e/ecobal reload &f- Reload config file'
+  help_footer: '&7&oFrom CubeX Ruling Class Toolkit'
+  help_header: '&f&lEcoBalancer Help:'
+  # check
+  scanning_offline_players: '&aScanning offline players...'
+  enter_player_name_or_use_checkall: '&aPlease enter player name or use /checkall'
+  # ecobal
+  set_balance: "&ePlayer &6%player% &e's balance is &6%balance%&e.\n&eBalance has been set to &6%new_balance%&e."
+  offline_extreme: "&ePlayer &6%player% &ehas been offline for &6%days_offline% &edays, extremely inactive.\n&eBalance has been set to &6%new_balance%&e."
+  offline_moderate: "&ePlayer &6%player% &ehas been offline for &6%days_offline% &edays, moderately inactive.\n&e&6%deduction% &ehas been deducted from the balance."
+  offline_active: "&ePlayer &6%player% &ehas only been offline &6%days_offline% &edays, moderately active."
+  deduction_made: "&e&6%deduction% &ehas been deducted from &6%player%&e's balance."
+  players_processing: "&7Processed &6%batch% &7players, total processed: &6%end%"
+  players_processed: "&7Total &6%end% &7players, total processed: &6%end%"
+  all_players_processed: "&aAll players have been cleaned."
+  zero_balance: "&ePlayer &6%player% &e's balance is &60&e."
+  player_not_found: "&cPlayer not found (case sensitive)."
+  # records
+  invalid_page: "&cinvalid page number."
+  records_header: "&f&lrecords of tax operations:"
+  operation: "[%restored%][%operation_id%] %type% %time% %deduction_amount% [%id%]"
+  records_page: "page %page% of %total%"
+  records_footer: "&7&ouse /checkrecords <page> to view more."
+  records_error: "&can error occurred: %error%"
+  # record
+  record_usage: "usage: /checkrecord <operation_id> [page]"
+  record_invalid_id: "invalid_operation_id"
+  record_all_header: "detail of operation %operation_id% (server check):"
+  record_all_detail: "[%player%] %new_balance%→%old_balance% %deduction%"
+  record_all_next: "use /checkrecord %operation_id% %page% to view next page"
+  record_all_page: "page %page% of %total%"
+  record_player_header: "detail of operation %operation_id% (player check):"
+  record_player_detail: "[%player%] %new_balance%→%old_balance% %deduction%"
+  record_operation_not_found: "operation not found"
+  record_not_found: "record not found"
+  record_error: "&can error occurred: %error%"
+  # restore
+  restore_usage: "usage: /restore <operation_id>"
+  restoring_all: "restoring operation %operation_id% (server check)..."
+  restored_all: "restored operation %operation_id% (server check)!"
+  restored_player: "restored operation %operation_id% (player check)!"
+  restore_invalid_id: "Invalid operation ID!"
+  restore_error: "&cAn error occurred: %error%"
+  restore_operation_not_found: "operation_not_found"
+  restore_not_found: "record_not_found"
+  # stats
+  stats_usage: "&e/stats <number_of_bars> [low] [up] &f- display descriptive statistics"
+  stats_limits: "&eplease use numbers or '_' to limit the range."
+  stats_invalid_args: "&cinvalid arguments. Please use numbers or '_' to limit the range."
+  stats_min_max: "min: %min% max: %max%"
+  stats_hist_header: "§6player balance histogram:§r"
+  stats_mean_median: "mean: %mean% median: %median%"
+  stats_sd: "standard deviation: %sd%"
+  # perc
+  perc_usage: "&e/perc <balance> [low] [up] &f- Display balance percentile"
+  perc_limits: "&eUse '_' to indicate no limit."
+  perc_invalid_args: "&cInvalid arguments. Please use numbers or '_' to limit the range."
+  # taxaccount
+  tax_account_enabled: "&eTax account enabled.\n&eTax account name is &6%tax_account_name%&e.\n&eTax account balance is &6%tax_account_balance%&e."
+  tax_account_disabled: "&eTax account disabled."
+  # sql
+  sql_save_error: "An error occurred while saving player balance:"
+  sql_clean_error: "An error occurred while cleaning player balance:"

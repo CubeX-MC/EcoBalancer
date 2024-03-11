@@ -1,3 +1,5 @@
+language: 'zh_CN' # 语言 # Language
+record-retention-days: 30 # 保留记录天数 # Record retention days
 check-time: "20:00"  # 格式为 HH:mm # Time format is HH:mm
 check-schedule:
   type: 'weekly' # 选项: 'daily', 'weekly', 'monthly' # Options: 'daily', 'weekly', 'monthly'

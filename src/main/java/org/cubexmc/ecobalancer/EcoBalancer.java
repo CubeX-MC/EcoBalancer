@@ -3,27 +3,26 @@ package org.cubexmc.ecobalancer;
 import net.milkbowl.vault.chat.Chat;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.permission.Permission;
+import org.apache.commons.lang.StringUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.cubexmc.ecobalancer.commands.CheckAllCommand;
-import org.cubexmc.ecobalancer.commands.CheckPlayerCommand;
-import org.cubexmc.ecobalancer.commands.UtilCommand;
+import org.cubexmc.ecobalancer.commands.*;
 
 import java.io.FileOutputStream;
 import java.nio.file.Files;
+import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Date;
 import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
@@ -37,7 +36,6 @@ import org.cubexmc.ecobalancer.metrics.Metrics;
 
 public final class EcoBalancer extends JavaPlugin {
     private static Economy econ = null;
-    private static Permission perms = null;
     private static Chat chat = null;
     private boolean deductBasedOnTime;
     private int inactiveDaysToDeduct;
@@ -45,6 +43,7 @@ public final class EcoBalancer extends JavaPlugin {
     private int inactiveDaysToClear;
     private FileHandler fileHandler;
     private Logger fileLogger = Logger.getLogger("EcoBalancerFileLogger");
+    private int recordRetentionDays;
     private String scheduleType;
     private List<Integer> scheduleDaysOfWeek;
     private List<Integer> scheduleDatesOfMonth;
@@ -64,6 +63,10 @@ public final class EcoBalancer extends JavaPlugin {
 
         saveDefaultConfig();  // 保存默认配置
         loadConfiguration();  // 加载配置
+
+        long initialDelay = calculateDelayForDaily(Calendar.getInstance(), 0, 0); // 在每天的午夜12点运行
+        long cleanupPeriod = 24 * 60 * 60 * 20; // 24小时(以tick为单位)
+        Bukkit.getScheduler().scheduleSyncRepeatingTask(this, this::cleanupRecords, initialDelay, cleanupPeriod);
 
         // Check for an existing log file and compress it if found
         File logDir = new File(getDataFolder() + File.separator + "logs");
@@ -104,7 +107,52 @@ public final class EcoBalancer extends JavaPlugin {
         getCommand("ecobal").setExecutor(new UtilCommand(this));
         getCommand("checkall").setExecutor(new CheckAllCommand(this));
         getCommand("checkplayer").setExecutor(new CheckPlayerCommand(this));
+        getCommand("stats").setExecutor(new DescripStatsCommand(this));
+        getCommand("perc").setExecutor(new PercentileCommand(this));
+        getCommand("checkrecords").setExecutor(new CheckRecordsCommand(this));
+        getCommand("checkrecord").setExecutor(new CheckRecordCommand(this));
+        getCommand("restore").setExecutor(new RestoreCommand(this));
+        displayAsciiArt();
         getLogger().info("EcoBalancer enabled!");
+    }
+
+    private void displayAsciiArt() {
+        String[] asciiArt = {
+                "▓█████  ▄████▄   ▒█████   ▄▄▄▄    ▄▄▄       ██▓    ",
+                "▓█   ▀ ▒██▀ ▀█  ▒██▒  ██▒▓█████▄ ▒████▄    ▓██▒    ",
+                "▒███   ▒▓█    ▄ ▒██░  ██▒▒██▒ ▄██▒██  ▀█▄  ▒██░    ",
+                "▒▓█  ▄ ▒▓▓▄ ▄██▒▒██   ██░▒██░█▀  ░██▄▄▄▄██ ▒██░    ",
+                "░▒████▒▒ ▓███▀ ░░ ████▓▒░░▓█  ▀█▓ ▓█   ▓██▒░██████▒",
+                "░░ ▒░ ░░ ░▒ ▒  ░░ ▒░▒░▒░ ░▒▓███▀▒ ▒▒   ▓▒█░░ ▒░▓  ░",
+                " ░ ░  ░  ░  ▒     ░ ▒ Version: " + getDescription().getVersion(),
+                "   ░   ░        ░ ░ ░ Author: " + getDescription().getAuthors().get(0),
+                "   ░  ░░ ░          ░ Website: " + getDescription().getWebsite(),
+                "                                   Powered by CubeX"
+        };
+
+        // ANSI 转义序列for colors
+        final String ANSI_RESET = "\u001B[0m";
+        final String ANSI_YELLOW = "\u001B[33m";
+        final String ANSI_GREEN = "\u001B[32m";
+        final String ANSI_CYAN = "\u001B[36m";
+        final String ANSI_RED = "\u001B[31m";
+        final String ANSI_WHITE = "\u001B[37m";
+
+        // 在控制台输出彩色的 ASCII 艺术字符
+        getLogger().info("");
+        for (int i = 0; i < asciiArt.length; i++) {
+            String line = asciiArt[i];
+            if (i < 6) {
+                line = ANSI_YELLOW + line + ANSI_RESET;
+            } else if (i < 9) {
+                // green since 21 characters
+                line = ANSI_YELLOW + line.substring(0, 21) + ANSI_RESET + line.substring(21) + ANSI_RESET;
+            } else if (i == 9) {
+                line = line.replace("Cube", ANSI_RED + "Cube" + ANSI_WHITE).replace("X", ANSI_WHITE + "X" + ANSI_RESET);
+            }
+            getLogger().info(line);
+        }
+        getLogger().info("");
     }
 
     public boolean useTaxAccount() {
@@ -125,6 +173,7 @@ public final class EcoBalancer extends JavaPlugin {
         // load language config
         loadLangFile();
         messagePrefix = langConfig.getString("prefix", "&7[&6EcoBalancer&7]&r");
+        recordRetentionDays = getConfig().getInt("record-retention-days", 30);
         // Load the new scheduling configuration
         scheduleType = getConfig().getString("check-schedule.type", "daily");
         scheduleDaysOfWeek = getConfig().getIntegerList("check-schedule.days-of-week");
@@ -142,15 +191,18 @@ public final class EcoBalancer extends JavaPlugin {
 
         for (Map<?, ?> bracket : rawTaxBrackets) {
             Integer threshold = bracket.get("threshold") == null ? Integer.MAX_VALUE : (Integer) bracket.get("threshold");
-            Double rate = (Double) bracket.get("rate");
+            Double rate = ((Number) bracket.get("rate")).doubleValue();
+            System.out.println(threshold + " " + rate);
             taxBrackets.put(threshold, rate);
         }
     }
 
     private void loadLangFile() {
-        File langFile = new File(getDataFolder(), "lang.yml");
+        // Load the language file based on config
+        String lang = getConfig().getString("lang", "zh_CN");
+        File langFile = new File(getDataFolder(), "lang" + File.separator + lang + ".yml");
         if (!langFile.exists()) {
-            saveResource("lang.yml", false);
+            saveResource("lang/zh_CN.yml", false);
         }
         langConfig = YamlConfiguration.loadConfiguration(langFile);
     }
@@ -230,11 +282,13 @@ public final class EcoBalancer extends JavaPlugin {
         return econ;
     }
 
-    public void checkBalance(CommandSender sender, long currentTime, OfflinePlayer player, boolean log) {
+    public void checkBalance(CommandSender sender, long currentTime, OfflinePlayer player, boolean log, boolean isCheckAll, int operationId) {
         long lastPlayed = player.getLastPlayed();
         long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
         double balance = econ.hasAccount(player) ? econ.getBalance(player) : 0;
         Double deductionRate = 0.0;
+
+        double oldBalance = balance;
 
         if (taxAccount && player.getName().equals(taxAccountName)) return;
 
@@ -286,6 +340,10 @@ public final class EcoBalancer extends JavaPlugin {
         } else {
             sendMessage(sender, "messages.zero_balance", placeholders, log);
         }
+
+        double newBalance = econ.getBalance(player);
+        double deduction = oldBalance - newBalance;
+        saveRecord(player, oldBalance, newBalance, deduction, isCheckAll, operationId);
     }
 
     private void sendMessage(CommandSender sender, String path, Map<String, String> placeholders, boolean isLog) {
@@ -313,10 +371,13 @@ public final class EcoBalancer extends JavaPlugin {
     private long calculateDelayForDaily(Calendar now) {
         int hourOfDay = Integer.parseInt(checkTime.split(":")[0]);
         int minute = Integer.parseInt(checkTime.split(":")[1]);
+        return calculateDelayForDaily(now, hourOfDay, minute);
+    }
+    private long calculateDelayForDaily(Calendar now, int hours, int minutes) {
 
         Calendar nextCheck = (Calendar) now.clone();
-        nextCheck.set(Calendar.HOUR_OF_DAY, hourOfDay);
-        nextCheck.set(Calendar.MINUTE, minute);
+        nextCheck.set(Calendar.HOUR_OF_DAY, hours);
+        nextCheck.set(Calendar.MINUTE, minutes);
         nextCheck.set(Calendar.SECOND, 0);
         nextCheck.set(Calendar.MILLISECOND, 0);
 
@@ -398,11 +459,24 @@ public final class EcoBalancer extends JavaPlugin {
         }, delay);
     }
 
+    public void checkPlayer(CommandSender sender, String playerName) {
+        OfflinePlayer target = Bukkit.getOfflinePlayer(playerName);
+        if (target.hasPlayedBefore()) {
+            long currentTime = System.currentTimeMillis();
+            final int operationId = getNextOperationId(false);  // false for checkPlayer
+            checkBalance(sender, currentTime, target, true, false, operationId);
+        } else {
+            sender.sendMessage(getFormattedMessage("messages.player_not_found", null));
+        }
+    }
+
     public void checkAll(CommandSender sender) {
         final long currentTime = System.currentTimeMillis();
         final OfflinePlayer[] players = Bukkit.getOfflinePlayers();
         final int batchSize = 100; // Number of players to process at once
         final int delay = 10; // Delay in ticks between batches (20 ticks = 1 second)
+
+        final int operationId = getNextOperationId(true);
 
         class BatchRunnable implements Runnable {
             private int index = 0;
@@ -413,7 +487,7 @@ public final class EcoBalancer extends JavaPlugin {
                 int end = Math.min(index + batchSize, players.length);
                 for (int i = index; i < end; i++) {
                     OfflinePlayer player = players[i];
-                    checkBalance(null, currentTime, player, false);
+                    checkBalance(null, currentTime, player, false, true, operationId);
                 }
                 index += batchSize;
 
@@ -430,6 +504,7 @@ public final class EcoBalancer extends JavaPlugin {
                 } else {
                     // All players have been processed, notify the sender
                     // Send a message to the sender after each batch
+                    calculateTotalDeduction(operationId);
                     Bukkit.getScheduler().runTask(EcoBalancer.this, () -> {
                         sendMessage(sender, "messages.all_players_processed", null, true);
                     });
@@ -439,5 +514,251 @@ public final class EcoBalancer extends JavaPlugin {
 
         // Start the first batch
         Bukkit.getScheduler().runTaskAsynchronously(this, new BatchRunnable());
+    }
+
+    private void calculateTotalDeduction(int operationId) {
+        // 获取数据库文件路径
+        File dataFolder = getDataFolder();
+        File databaseFile = new File(dataFolder, "records.db");
+
+        // 建立数据库连接
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+            // 查询该操作ID的所有记录,并计算扣除金额的总和
+            try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT SUM(deduction) AS total_deduction FROM records WHERE operation_id = ?")) {
+                preparedStatement.setInt(1, operationId);
+                try (ResultSet resultSet = preparedStatement.executeQuery()) {
+                    if (resultSet.next()) {
+                        double totalDeduction = resultSet.getDouble("total_deduction");
+                        // 在这里,你可以选择将总扣除金额记录到数据库的另一个表中,或者简单地记录到日志文件中
+                        getLogger().info("Operation " + operationId + " total deduction: " + totalDeduction);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            getLogger().severe("无法计算总扣除金额: " + e.getMessage());
+        }
+    }
+
+    private int getNextOperationId(boolean isCheckAll) {
+        // 获取数据库文件路径
+        File dataFolder = getDataFolder();
+        File databaseFile = new File(dataFolder, "records.db");
+
+        // 建立数据库连接
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+            // 如果表不存在,则创建表
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, is_restored BOOLEAN NOT NULL DEFAULT 0)");
+            }
+
+            // 插入一个新的操作记录
+            try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO operations (timestamp, is_checkall) VALUES (?, ?)", Statement.RETURN_GENERATED_KEYS)) {
+                preparedStatement.setLong(1, System.currentTimeMillis());
+                preparedStatement.setBoolean(2, isCheckAll);
+                preparedStatement.executeUpdate();
+
+                // 获取新插入的操作的ID
+                try (ResultSet generatedKeys = preparedStatement.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        return generatedKeys.getInt(1);
+                    } else {
+                        throw new SQLException("Creating operation failed, no ID obtained.");
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            getLogger().severe("无法获取下一个操作ID: " + e.getMessage());
+            return -1;  // 返回一个无效的操作ID表示出错
+        }
+    }
+
+    public void generateHistogram(CommandSender sender, int numBars, double low, double high) {
+        OfflinePlayer[] players = Bukkit.getOfflinePlayers();
+        List<Double> balances = new ArrayList<>();
+
+        for (OfflinePlayer player : players) {
+            if (econ.hasAccount(player)) {
+                double balance = econ.getBalance(player);
+                if (balance >= low && balance <= high) {
+                    balances.add(balance);
+                }
+            }
+        }
+
+        double min = balances.stream().min(Double::compareTo).orElse(0.0);
+        double max = balances.stream().max(Double::compareTo).orElse(0.0);
+        double range = max - min;
+        double barWidth = range / numBars;
+        System.out.println("min: " + min);
+        System.out.println("max: " + max);
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("min", String.format("%.2f", min));
+        placeholders.put("max", String.format("%.2f", max));
+        sender.sendMessage(getFormattedMessage("messages.stats_min_max", placeholders));
+
+        int[] histogram = new int[numBars];
+        for (double balance : balances) {
+            int barIndex = (int) ((balance - min) / barWidth);
+            if (barIndex == numBars) {
+                barIndex--;
+            }
+            histogram[barIndex]++;
+        }
+
+        int maxBarLength = 50; // 可以根据需要调整这个值
+        int maxFrequency = Arrays.stream(histogram).max().orElse(0);
+
+        sender.sendMessage(getFormattedMessage("messages.stats_hist_header", null));
+        for (int i = 0; i < numBars; i++) {
+            double lowerBound = min + i * barWidth;
+            double upperBound = lowerBound + barWidth;
+            int barLength = (int) (((double) histogram[i] / maxFrequency) * maxBarLength);
+            String bar = "§a" + StringUtils.repeat("▏", barLength) + "§r";
+            String interval = "§7(" + formatNumber(lowerBound) + " - " + formatNumber(upperBound) + ")§r";
+            sender.sendMessage(String.format("%s §e%d p§r %s", bar, histogram[i], interval));
+        }
+
+        // Calculate and print additional statistics
+        double mean = balances.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double median = calculateMedian(balances);
+        double standardDeviation = calculateStandardDeviation(balances, mean);
+        double mode = calculateMode(balances);
+
+        Map<String, String> statsPlaceholders = new HashMap<>();
+        statsPlaceholders.put("mean", String.format("%.2f", mean));
+        statsPlaceholders.put("median", String.format("%.2f", median));
+        statsPlaceholders.put("standard_deviation", String.format("%.2f", standardDeviation));
+        sender.sendMessage(getFormattedMessage("messages.stats_mean_median", statsPlaceholders));
+        sender.sendMessage(getFormattedMessage("messages.stats_sd", statsPlaceholders));
+    }
+
+    private double calculateMedian(List<Double> values) {
+        Collections.sort(values);
+        int size = values.size();
+        if (size % 2 == 0) {
+            return (values.get(size / 2 - 1) + values.get(size / 2)) / 2;
+        } else {
+            return values.get(size / 2);
+        }
+    }
+
+    private double calculateStandardDeviation(List<Double> values, double mean) {
+        double sum = 0;
+        for (double value : values) {
+            sum += Math.pow(value - mean, 2);
+        }
+        return Math.sqrt(sum / values.size());
+    }
+
+    private double calculateMode(List<Double> values) {
+        Map<Double, Integer> frequencyMap = new HashMap<>();
+        int maxFrequency = 0;
+        double mode = 0;
+
+        for (double value : values) {
+            int frequency = frequencyMap.getOrDefault(value, 0) + 1;
+            frequencyMap.put(value, frequency);
+            if (frequency > maxFrequency) {
+                maxFrequency = frequency;
+                mode = value;
+            }
+        }
+
+        return mode;
+    }
+
+    private String formatNumber(double number) {
+        if (number >= 1000000000) {
+            return String.format("%.1fb", number / 1000000000);
+        } else if (number >= 1000000) {
+            return String.format("%.1fm", number / 1000000);
+        } else if (number >= 1000) {
+            return String.format("%.1fk", number / 1000);
+        } else {
+            return String.format("%.1f", number);
+        }
+    }
+
+    public double calculatePercentile(double balance, double low, double high) {
+        OfflinePlayer[] players = Bukkit.getOfflinePlayers();
+        List<Double> balances = new ArrayList<>();
+
+        for (OfflinePlayer player : players) {
+            if (econ.hasAccount(player)) {
+                double playerBalance = econ.getBalance(player);
+                if (playerBalance >= low && playerBalance <= high) {
+                    balances.add(playerBalance);
+                }
+            }
+        }
+
+        int totalPlayers = balances.size();
+        int playersBelow = (int) balances.stream().filter(b -> b < balance).count();
+
+        return (double) playersBelow / totalPlayers * 100;
+    }
+
+    private void saveRecord(OfflinePlayer player, double oldBalance, double newBalance, double deduction, boolean isCheckAll, int operationId) {
+        // 获取数据库文件路径
+        File dataFolder = getDataFolder();
+        File databaseFile = new File(dataFolder, "records.db");
+
+        // 建立数据库连接
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+            // 如果表不存在,则创建表
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
+            }
+
+            // 插入记录
+            try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO records (player, old_balance, new_balance, deduction, timestamp, is_checkall, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                preparedStatement.setString(1, player.getUniqueId().toString());
+                preparedStatement.setDouble(2, oldBalance);
+                preparedStatement.setDouble(3, newBalance);
+                preparedStatement.setDouble(4, deduction);
+                preparedStatement.setLong(5, System.currentTimeMillis());
+                preparedStatement.setBoolean(6, isCheckAll);
+                preparedStatement.setInt(7, operationId);
+                preparedStatement.executeUpdate();
+            }
+        } catch (SQLException e) {
+            getLogger().severe(getFormattedMessage("messages.sql_save_error", null) + e.getMessage());
+        }
+    }
+
+    private void cleanupRecords() {
+        // 计算过期时间
+        long expirationTime = System.currentTimeMillis() - recordRetentionDays * 24 * 60 * 60 * 1000;
+
+        // 获取数据库文件路径
+        File dataFolder = getDataFolder();
+        File databaseFile = new File(dataFolder, "records.db");
+
+        // 建立数据库连接
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+            // 首先,我们需要找到所有过期的操作ID
+            try (PreparedStatement selectExpiredOperations = connection.prepareStatement("SELECT id FROM operations WHERE timestamp < ?")) {
+                selectExpiredOperations.setLong(1, expirationTime);
+                try (ResultSet expiredOperations = selectExpiredOperations.executeQuery()) {
+                    while (expiredOperations.next()) {
+                        int operationId = expiredOperations.getInt("id");
+
+                        // 删除records表中所有与该操作ID相关的记录
+                        try (PreparedStatement deleteRecords = connection.prepareStatement("DELETE FROM records WHERE operation_id = ?")) {
+                            deleteRecords.setInt(1, operationId);
+                            deleteRecords.executeUpdate();
+                        }
+
+                        // 删除operations表中的该操作记录
+                        try (PreparedStatement deleteOperation = connection.prepareStatement("DELETE FROM operations WHERE id = ?")) {
+                            deleteOperation.setInt(1, operationId);
+                            deleteOperation.executeUpdate();
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            getLogger().severe(getFormattedMessage("messages.sql_clean_error", null) + e.getMessage());
+        }
     }
 }
