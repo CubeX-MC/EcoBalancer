@@ -86,7 +86,7 @@ public final class EcoBalancer extends JavaPlugin {
 
             // 检查 'records' 表是否存在,如果不存在则创建它
             try (Statement statement = connection.createStatement()) {
-                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
+                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player_name TEXT NOT NULL, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
             }
         } catch (SQLException e) {
             getLogger().severe("检查或创建数据库表时出错: " + e.getMessage());
@@ -734,18 +734,19 @@ public final class EcoBalancer extends JavaPlugin {
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
             // 如果表不存在,则创建表
             try (Statement statement = connection.createStatement()) {
-                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
+                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player_name TEXT NOT NULL, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
             }
 
             // 插入记录
-            try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO records (player, old_balance, new_balance, deduction, timestamp, is_checkall, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
-                preparedStatement.setString(1, player.getUniqueId().toString());
-                preparedStatement.setDouble(2, oldBalance);
-                preparedStatement.setDouble(3, newBalance);
-                preparedStatement.setDouble(4, deduction);
-                preparedStatement.setLong(5, System.currentTimeMillis());
-                preparedStatement.setBoolean(6, isCheckAll);
-                preparedStatement.setInt(7, operationId);
+            try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO records (operation_id, player_name, player, old_balance, new_balance, deduction, timestamp, is_checkall) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                preparedStatement.setInt(1, operationId);
+                preparedStatement.setString(2, player.getName());
+                preparedStatement.setString(3, player.getUniqueId().toString());
+                preparedStatement.setDouble(4, oldBalance);
+                preparedStatement.setDouble(5, newBalance);
+                preparedStatement.setDouble(6, deduction);
+                preparedStatement.setLong(7, System.currentTimeMillis());
+                preparedStatement.setBoolean(8, isCheckAll);
                 preparedStatement.executeUpdate();
             }
         } catch (SQLException e) {

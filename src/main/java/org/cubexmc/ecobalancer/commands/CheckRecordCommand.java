@@ -67,7 +67,7 @@ public class CheckRecordCommand implements CommandExecutor {
                             int pageSize = 10;
                             int offset = (page - 1) * pageSize;
 
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? LIMIT ? OFFSET ?")) {
+                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? ORDER BY deduction DESC LIMIT ? OFFSET ?")) {
                                 selectStatement.setInt(1, operationId);
                                 selectStatement.setInt(2, pageSize);
                                 selectStatement.setInt(3, offset);
@@ -75,14 +75,13 @@ public class CheckRecordCommand implements CommandExecutor {
                                 try (ResultSet allRecords = selectStatement.executeQuery()) {
                                     int count = 0;
                                     while (allRecords.next()) {
-                                        String playerUUID = allRecords.getString("player");
-                                        OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(playerUUID));
+                                        String playerName = allRecords.getString("player_name");
                                         double oldBalance = allRecords.getDouble("old_balance");
                                         double newBalance = allRecords.getDouble("new_balance");
                                         double deduction = allRecords.getDouble("deduction");
 
                                         Map<String, String> detailPlaceholders = new HashMap<>();
-                                        detailPlaceholders.put("player", offlinePlayer.getName());
+                                        detailPlaceholders.put("player", playerName);
                                         detailPlaceholders.put("old_balance", String.format("%.2f", oldBalance));
                                         detailPlaceholders.put("new_balance", String.format("%.2f", newBalance));
                                         detailPlaceholders.put("deduction", String.format("%.2f", deduction));
@@ -120,15 +119,14 @@ public class CheckRecordCommand implements CommandExecutor {
                                 selectStatement.setInt(1, operationId);
                                 try (ResultSet allRecords = selectStatement.executeQuery()) {
                                     if (allRecords.next()) {
-                                        String playerUUID = allRecords.getString("player");
-                                        OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(playerUUID));
+                                        String playerName = allRecords.getString("player_name");
                                         double oldBalance = allRecords.getDouble("old_balance");
                                         double newBalance = allRecords.getDouble("new_balance");
                                         double deduction = allRecords.getDouble("deduction");
 
                                         Map<String, String> placeholders = new HashMap<>();
                                         placeholders.put("operation_id", String.valueOf(operationId));
-                                        placeholders.put("player", offlinePlayer.getName());
+                                        placeholders.put("player", playerName);
                                         placeholders.put("old_balance", String.format("%.2f", oldBalance));
                                         placeholders.put("new_balance", String.format("%.2f", newBalance));
                                         placeholders.put("deduction", String.format("%.2f", deduction));
