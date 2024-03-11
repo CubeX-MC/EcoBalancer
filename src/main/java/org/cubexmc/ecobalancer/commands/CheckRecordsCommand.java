@@ -59,10 +59,10 @@ public class CheckRecordsCommand implements CommandExecutor {
                         placeholders.put("time", dateFormat.format(new Date(timestamp)));
                         placeholders.put("type", isCheckAll ? "A" : "P");
                         placeholders.put("deduction_amount", String.format("%.2f", totalDeduction));
-                        placeholders.put("oepration_id", String.valueOf(id));
+                        placeholders.put("operation_id", String.valueOf(id));
                         placeholders.put("restored", isRestored ? "x" : " ");
 
-                        String message = plugin.getFormattedMessage("messages.operation", placeholders);
+                        String message = plugin.getFormattedMessage("messages.records_operation", placeholders);
                         sender.sendMessage(message);
                     }
                 }

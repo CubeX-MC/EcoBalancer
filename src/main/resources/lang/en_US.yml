@@ -32,7 +32,7 @@ messages:
   # records
   invalid_page: "&cinvalid page number."
   records_header: "&f&lrecords of tax operations:"
-  operation: "[%restored%][%operation_id%] %type% %time% %deduction_amount% [%id%]"
+  records_operation: "[%restored%] %type% %time% %deduction_amount% [%operation_id%]"
   records_page: "page %page% of %total%"
   records_footer: "&7&ouse /checkrecords <page> to view more."
   records_error: "&can error occurred: %error%"

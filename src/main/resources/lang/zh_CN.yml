@@ -32,7 +32,7 @@ messages:
   # records
   invalid_page: "&c无效的页码。"
   records_header: "&f&l税收操作记录:"
-  operation: "[%restored%] %type% %time% %deduction_amount% [%operation_id%]"
+  records_operation: "[%restored%] %type% %time% %deduction_amount% [%operation_id%]"
   records_page: "第 %page% 页,共 %total% 页"
   records_footer: "&7&o使用 /checkrecords <页码> 查看更多。"
   records_error: "&c发生错误：%error%"
