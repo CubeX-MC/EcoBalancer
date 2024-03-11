@@ -62,6 +62,7 @@ public class CheckRecordsCommand implements CommandExecutor {
                         placeholders.put("operation_id", String.valueOf(id));
                         placeholders.put("restored", isRestored ? "x" : " ");
 
+                        sender.sendMessage(plugin.getFormattedMessage("messages.prefix", null));
                         String message = plugin.getFormattedMessage("messages.records_operation", placeholders);
                         sender.sendMessage(message);
                     }

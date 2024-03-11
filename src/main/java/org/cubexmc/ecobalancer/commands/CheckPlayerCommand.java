@@ -18,11 +18,10 @@ public class CheckPlayerCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String s, String[] args) {
         if (sender instanceof Player || sender.hasPermission("ecobalancer.admin")) {
-            Player player = (Player) sender;
             if (args.length == 0) {
-                player.sendMessage(plugin.getFormattedMessage("messages.enter_player_name_or_use_checkall", null));
+                sender.sendMessage(plugin.getFormattedMessage("messages.enter_player_name_or_use_checkall", null));
             } else {
-                plugin.checkPlayer(player, args[0]);
+                plugin.checkPlayer(sender, args[0]);
             }
             return true;
         }

@@ -16,7 +16,7 @@ public class AdminLoginListener implements Listener {
     @EventHandler
     public void onAdminLogin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        if (player.hasPermission("ecobalance.admin")) {
+        if (player.hasPermission("ecobalance.admin") && plugin.getConfig().getBoolean("info-on-login")) {
             if (plugin.useTaxAccount()) {
                 Map<String, String> placeholders = new HashMap<>();
                 placeholders.put("tax_account_name", plugin.getTaxAccountName());
