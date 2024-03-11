@@ -16,6 +16,9 @@ check single offline player and reduce or clean balance based on configuration
 
 ### 配置 config
 ```
+language: 'en_US' # 语言 # Language
+info-on-login: true # 登录时显示用户信息 # Show user info on login
+record-retention-days: 30 # 保留记录天数 # Record retention days
 check-time: "20:00"  # 格式为 HH:mm # Time format is HH:mm
 check-schedule:
   type: 'weekly' # 选项: 'daily', 'weekly', 'monthly' # Options: 'daily', 'weekly', 'monthly'
