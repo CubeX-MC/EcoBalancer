@@ -42,7 +42,7 @@ public class CheckRecordsCommand implements CommandExecutor {
         // 从数据库中查询所有操作
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
             int offset = (pageNumber - 1) * pageSize;
-            try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT o.id, o.timestamp, r.is_checkall, SUM(r.deduction) AS total_deduction FROM operations o JOIN records r ON o.id = r.operation_id GROUP BY o.id ORDER BY o.timestamp DESC LIMIT ? OFFSET ?")) {
+            try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT o.id, o.timestamp, o.is_restored, r.is_checkall, SUM(r.deduction) AS total_deduction FROM operations o JOIN records r ON o.id = r.operation_id GROUP BY o.id ORDER BY o.timestamp DESC LIMIT ? OFFSET ?")) {
                 preparedStatement.setInt(1, pageSize);
                 preparedStatement.setInt(2, offset);
                 try (ResultSet resultSet = preparedStatement.executeQuery()) {
@@ -59,7 +59,7 @@ public class CheckRecordsCommand implements CommandExecutor {
                         placeholders.put("time", dateFormat.format(new Date(timestamp)));
                         placeholders.put("type", isCheckAll ? "A" : "P");
                         placeholders.put("deduction_amount", String.format("%.2f", totalDeduction));
-                        placeholders.put("id", String.valueOf(id));
+                        placeholders.put("oepration_id", String.valueOf(id));
                         placeholders.put("restored", isRestored ? "x" : " ");
 
                         String message = plugin.getFormattedMessage("messages.operation", placeholders);

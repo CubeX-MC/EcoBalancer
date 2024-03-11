@@ -62,6 +62,7 @@ messages:
   stats_limits: "&eplease use numbers or '_' to limit the range."
   stats_invalid_args: "&cinvalid arguments. Please use numbers or '_' to limit the range."
   stats_min_max: "min: %min% max: %max%"
+  stats_hist_drawing: "§6drawing histogram...§r"
   stats_hist_header: "§6player balance histogram:§r"
   stats_mean_median: "mean: %mean% median: %median%"
   stats_sd: "standard deviation: %sd%"

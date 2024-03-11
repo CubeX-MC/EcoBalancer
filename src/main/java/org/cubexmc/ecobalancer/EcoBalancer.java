@@ -64,6 +64,34 @@ public final class EcoBalancer extends JavaPlugin {
         saveDefaultConfig();  // 保存默认配置
         loadConfiguration();  // 加载配置
 
+        // 检查db，如果不存在则创建
+        File dataFolder = getDataFolder();
+        File databaseFile = new File(dataFolder, "records.db");
+
+        // 如果数据库文件不存在,创建它
+        if (!databaseFile.exists()) {
+            try {
+                databaseFile.createNewFile();
+            } catch (IOException e) {
+                getLogger().severe("无法创建数据库文件: " + e.getMessage());
+            }
+        }
+
+        // 建立数据库连接
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+            // 检查 'operations' 表是否存在,如果不存在则创建它
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, is_restored BOOLEAN NOT NULL)");
+            }
+
+            // 检查 'records' 表是否存在,如果不存在则创建它
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
+            }
+        } catch (SQLException e) {
+            getLogger().severe("检查或创建数据库表时出错: " + e.getMessage());
+        }
+
         long initialDelay = calculateDelayForDaily(Calendar.getInstance(), 0, 0); // 在每天的午夜12点运行
         long cleanupPeriod = 24 * 60 * 60 * 20; // 24小时(以tick为单位)
         Bukkit.getScheduler().scheduleSyncRepeatingTask(this, this::cleanupRecords, initialDelay, cleanupPeriod);
@@ -127,7 +155,7 @@ public final class EcoBalancer extends JavaPlugin {
                 " ░ ░  ░  ░  ▒     ░ ▒ Version: " + getDescription().getVersion(),
                 "   ░   ░        ░ ░ ░ Author: " + getDescription().getAuthors().get(0),
                 "   ░  ░░ ░          ░ Website: " + getDescription().getWebsite(),
-                "                                   Powered by CubeX"
+                "                      Powered by CubeX"
         };
 
         // ANSI 转义序列for colors
@@ -192,7 +220,6 @@ public final class EcoBalancer extends JavaPlugin {
         for (Map<?, ?> bracket : rawTaxBrackets) {
             Integer threshold = bracket.get("threshold") == null ? Integer.MAX_VALUE : (Integer) bracket.get("threshold");
             Double rate = ((Number) bracket.get("rate")).doubleValue();
-            System.out.println(threshold + " " + rate);
             taxBrackets.put(threshold, rate);
         }
     }
@@ -552,9 +579,10 @@ public final class EcoBalancer extends JavaPlugin {
             }
 
             // 插入一个新的操作记录
-            try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO operations (timestamp, is_checkall) VALUES (?, ?)", Statement.RETURN_GENERATED_KEYS)) {
+            try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO operations (timestamp, is_checkall, is_restored) VALUES (?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
                 preparedStatement.setLong(1, System.currentTimeMillis());
                 preparedStatement.setBoolean(2, isCheckAll);
+                preparedStatement.setBoolean(3, false);
                 preparedStatement.executeUpdate();
 
                 // 获取新插入的操作的ID
@@ -573,6 +601,8 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     public void generateHistogram(CommandSender sender, int numBars, double low, double high) {
+
+        sender.sendMessage(getFormattedMessage("messages.stats_hist_drawing", null));
         OfflinePlayer[] players = Bukkit.getOfflinePlayers();
         List<Double> balances = new ArrayList<>();
 
@@ -589,8 +619,6 @@ public final class EcoBalancer extends JavaPlugin {
         double max = balances.stream().max(Double::compareTo).orElse(0.0);
         double range = max - min;
         double barWidth = range / numBars;
-        System.out.println("min: " + min);
-        System.out.println("max: " + max);
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("min", String.format("%.2f", min));
         placeholders.put("max", String.format("%.2f", max));
@@ -622,12 +650,11 @@ public final class EcoBalancer extends JavaPlugin {
         double mean = balances.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
         double median = calculateMedian(balances);
         double standardDeviation = calculateStandardDeviation(balances, mean);
-        double mode = calculateMode(balances);
 
         Map<String, String> statsPlaceholders = new HashMap<>();
         statsPlaceholders.put("mean", String.format("%.2f", mean));
         statsPlaceholders.put("median", String.format("%.2f", median));
-        statsPlaceholders.put("standard_deviation", String.format("%.2f", standardDeviation));
+        statsPlaceholders.put("sd", String.format("%.2f", standardDeviation));
         sender.sendMessage(getFormattedMessage("messages.stats_mean_median", statsPlaceholders));
         sender.sendMessage(getFormattedMessage("messages.stats_sd", statsPlaceholders));
     }
