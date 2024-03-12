@@ -9,7 +9,7 @@ EcoBalancer is a smart Minecraft economy plugin that optimizes your server's eco
 - Wealth distribution histogram
 - Basic statistics like mean and standard deviation for player balance
 
-![Imgur](https://imgur.com/SohYQMD.gif)
+![Imgur](https://i.imgur.com/0eXcPeO.gif)
 
 ![Imgur](https://imgur.com/L7wagZ9.gif)
 
