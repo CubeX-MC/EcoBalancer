@@ -1,41 +1,65 @@
-# EcoBalancer
-该插件用于伤害方块叉服务器统治阶级与玩家之间的感情<br>
-前置插件：Vault<br>
-理论支持1.12-1.20<br>
-Brutal punishment toward inactive players of CubeX<br>
-prerequisite: Vault<br>
-Theoretically support 1.12-1.20
+# EcoBalancer: A Smart Minecraft Economy Plugin
 
-### /checkall
-遍历并清洗全部离线玩家的余额<br>
-check all offline players and reduce or clean balance based on configuration
+EcoBalancer is a smart Minecraft economy plugin that optimizes your server's economy through an intelligent tax system for inactive players. It promotes fair competition, creates an active gaming environment, and provides smart management solutions for your server's economy.
 
-### /checkplayer <playername>
-针对单一玩家进行余额查处<br>
-check single offline player and reduce or clean balance based on configuration
+## Key Features
 
-### 配置 config
-```
-language: 'en_US' # 语言 # Language
-info-on-login: true # 登录时显示用户信息 # Show user info on login
-record-retention-days: 30 # 保留记录天数 # Record retention days
-check-time: "20:00"  # 格式为 HH:mm # Time format is HH:mm
+- Automated and configurable tax settings
+- Tax revenue saved into a public account
+- Wealth distribution histogram
+- Basic statistics like mean and standard deviation for player balance
+
+![Imgur](https://imgur.com/SohYQMD.gif)
+
+![Imgur](https://imgur.com/L7wagZ9.gif)
+
+## Features
+
+- Automated routine taxing (daily/weekly/monthly) of inactive player accounts
+- Customizable deduction rates based on balance classes and activity levels
+- Manual taxation commands for on-demand adjustments
+
+**Note**: \
+EcoBalancer is currently undergoing testing. We encourage rigorous evaluation before deployment. For bug reports or suggestions, please open an issue.
+Also, make sure you remove the old config & language files when updating.
+
+**Prerequisite**: Vault
+
+## Commands
+
+- `/ecobal help`: Display help information
+- `/ecobal reload`: Reload the configuration file
+- `/checkall`: Update all offline players' balances as per configuration settings
+- `/checkplayer <player>`: Update a specific offline player's balance as per configuration settings
+- `/stats`: Show descriptive statistics
+- `/interval`: List players' balance in a specific interval
+- `/perc`: Show percentile of players' balance
+- `/checkrecords`: Show all operations
+- `/checkrecord`: Show detail of a specific operation
+- `/restore`: Restore a specific operation
+
+## Configuration (config.yml)
+
+```yaml
+language: 'en_US' # Language en_US/zh_CN
+info-on-login: true # Show user info on login
+record-retention-days: 30 # Record retention days
+check-time: "20:00" # Time format is HH:mm
 check-schedule:
-  type: 'weekly' # 选项: 'daily', 'weekly', 'monthly' # Options: 'daily', 'weekly', 'monthly'
-  days-of-week: [2, 4, 6] # 周一, 周三, 周五 (7 = 周六, 1 = 周日) # Monday, Wednesday, Friday (7 = Saturday, 1 = Sunday)
-  dates-of-month: [1] # 每月一号 # 1st day of each month
+ type: 'weekly' # Options: 'daily', 'weekly', 'monthly'
+ days-of-week: [2, 4, 6] # Monday, Wednesday, Friday (7 = Saturday, 1 = Sunday)
+ dates-of-month: [1] # 1st day of each month
 deduct-based-on-time: true
-# 下面两个选项仅在 deduct-based-on-time 为 true 时生效 # The following two options only take effect when deduct-based-on-time is true
-inactive-days-to-deduct: 50  # 未上线扣款开始的天数 # Days inactive before starting deductions
-inactive-days-to-clear: 500 # 未上线清空余额的天数 # Days inactive before clearing balance
-# 按阶级扣税 # Tax brackets for deductions
+# The following two options only take effect when deduct-based-on-time is true
+inactive-days-to-deduct: 50 # Days inactive before starting deductions
+inactive-days-to-clear: 500 # Days inactive before clearing balance
+# Tax brackets for deductions
 tax-brackets:
-  - threshold: 100000
-    rate: 0.001 # 税率 # Tax rate
-  - threshold: 1000000
-    rate: 0.01 # 税率 # Tax rate
-  - threshold: null # 无上限 # No limit
-    rate: 0.02 # 税率 # Tax rate
-tax-account: true # 是否使用税金账户 # Whether to use tax account
-tax-account-name: 'tax' # 税金账户名称 # Tax account name
-```
+ - threshold: 100000
+   rate: 0.001 # Tax rate
+ - threshold: 1000000
+   rate: 0.01 # Tax rate
+ - threshold: null # No limit
+   rate: 0.02 # Tax rate
+tax-account: true # Whether to use tax account
+tax-account-name: 'tax' # Tax account name
