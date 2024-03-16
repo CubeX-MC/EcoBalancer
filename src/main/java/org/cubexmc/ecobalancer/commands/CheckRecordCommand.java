@@ -2,21 +2,17 @@ package org.cubexmc.ecobalancer.commands;
 
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.TextComponent;
-import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabExecutor;
+import org.bukkit.util.StringUtil;
 import org.cubexmc.ecobalancer.EcoBalancer;
 
 import java.io.File;
 import java.sql.*;
-import java.text.SimpleDateFormat;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
-public class CheckRecordCommand implements CommandExecutor {
+public class CheckRecordCommand implements TabExecutor {
     private final EcoBalancer plugin;
 
     public CheckRecordCommand(EcoBalancer plugin) {
@@ -181,5 +177,17 @@ public class CheckRecordCommand implements CommandExecutor {
         }
 
         return true;
+    }
+
+    @Override
+    public final List<String> onTabComplete(final CommandSender commandSender, final Command command, final String s, final String[] strings) {
+        final int size = 2;
+        final Collection<String> ret = new ArrayList<>(size);
+        if (2 == strings.length) {
+            ret.add("deduction");
+            ret.add("alphabet");
+        }
+        final String lowerCase = strings[1].toLowerCase(Locale.ROOT);
+        return StringUtil.copyPartialMatches(lowerCase, ret, new ArrayList<>(size));
     }
 }

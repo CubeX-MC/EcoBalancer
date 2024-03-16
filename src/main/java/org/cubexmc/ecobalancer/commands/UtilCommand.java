@@ -1,16 +1,18 @@
 package org.cubexmc.ecobalancer.commands;
 
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabExecutor;
+import org.bukkit.util.StringUtil;
 import org.cubexmc.ecobalancer.EcoBalancer;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
 
-public class UtilCommand implements CommandExecutor {
+public class UtilCommand implements TabExecutor {
     EcoBalancer plugin;
 
     public UtilCommand(EcoBalancer plugin) {
@@ -44,5 +46,17 @@ public class UtilCommand implements CommandExecutor {
             return true;
         }
         return false;
+    }
+
+    @Override
+    public final List<String> onTabComplete(final CommandSender commandSender, final Command command, final String s, final String[] strings) {
+        final int size = 2;
+        final Collection<String> ret = new ArrayList<>(size);
+        if (1 == strings.length) {
+            ret.add("reload");
+            ret.add("help");
+        }
+        final String lowerCase = strings[0].toLowerCase(Locale.ROOT);
+        return StringUtil.copyPartialMatches(lowerCase, ret, new ArrayList<>(size));
     }
 }
