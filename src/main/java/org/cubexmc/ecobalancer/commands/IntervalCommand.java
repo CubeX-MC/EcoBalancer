@@ -1,19 +1,18 @@
 package org.cubexmc.ecobalancer.commands;
 
 import net.md_5.bungee.api.chat.ClickEvent;
-import net.md_5.bungee.api.chat.ComponentBuilder;
-import net.md_5.bungee.api.chat.HoverEvent;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabExecutor;
+import org.bukkit.util.StringUtil;
 import org.cubexmc.ecobalancer.EcoBalancer;
 
 import java.util.*;
 
-public class IntervalCommand implements CommandExecutor {
+public class IntervalCommand implements TabExecutor {
     private final EcoBalancer plugin;
 
     public IntervalCommand(EcoBalancer plugin) {
@@ -173,5 +172,17 @@ public class IntervalCommand implements CommandExecutor {
             sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
             return defaultValue;
         }
+    }
+
+    @Override
+    public final List<String> onTabComplete(final CommandSender commandSender, final Command command, final String s, final String[] strings) {
+        final int size = 2;
+        final Collection<String> ret = new ArrayList<>(size);
+        if (1 == strings.length) {
+            ret.add("alphabet");
+            ret.add("balance");
+        }
+        final String lowerCase = strings[0].toLowerCase(Locale.ROOT);
+        return StringUtil.copyPartialMatches(lowerCase, ret, new ArrayList<>(size));
     }
 }
