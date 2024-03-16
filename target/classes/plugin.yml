@@ -11,44 +11,71 @@ commands:
   checkall:
     description: Clean or deduct all inactive players.
     usage: /checkall
-    permission: ecobalancer.admin
+    permission: ecobalancer.command.checkall
   checkplayer:
     description: Clean or deduct a specific inactive player.
     usage: /checkplayer
-    permission: ecobalancer.admin
+    permission: ecobalancer.command.checkplayer
   ecobal:
     description: Utility command for EcoBalancer.
     usage: /ecobal <command>
-    permission: ecobalancer.admin
+    permission: ecobalancer.command.ecobal
   stats:
     description: Show descriptive statistics.
     usage: /stats <number of bars> [low] [up]
-    permission: ecobalancer.admin
+    permission: ecobalancer.command.stats
   interval:
     description: List players' balance in a specific interval.
     usage: /interval [alphabet|balance] [low] [up] [page]
-    permission: ecobalancer.admin
+    permission: ecobalancer.command.interval
   perc:
     description: Show percentile of players' balance.
     usage: /perc <balance> [low] [up]
-    permission: ecobalancer.admin
+    permission: ecobalancer.command.perc
   reload:
     description: Reload the configuration file.
     usage: /ecobal reload
-    permission: ecobalancer.admin
+    permission: ecobalancer.command.reload
   checkrecords:
     description: Show all operations.
     usage: /checkrecords [page]
-    permission: ecobalancer.admin
+    permission: ecobalancer.command.checkrecords
   checkrecord:
     description: Show detail of a specific operation.
     usage: /checkrecord <operation_id> [deduction|alphabet] [page]
-    permission: ecobalancer.admin
+    permission: ecobalancer.command.checkrecord
   restore:
     description: Restore a specific operation.
     usage: /restore <operation_id>
-    permission: ecobalancer.admin
+    permission: ecobalancer.command.restore
 permissions:
-  ecobalancer.admin:
-    description: Allows use of commands
+  ecobalancer.command.checkall:
+    description: Allows use of /checkall command
+    default: op
+  ecobalancer.command.checkplayer:
+    description: Allows use of /checkplayer command
+    default: op
+  ecobalancer.command.ecobal:
+    description: Allows use of /ecobal command
+    default: op
+  ecobalancer.command.stats:
+    description: Allows use of /stats command
+    default: op
+  ecobalancer.command.interval:
+    description: Allows use of /interval command
+    default: op
+  ecobalancer.command.perc:
+    description: Allows use of /perc command
+    default: op
+  ecobalancer.command.reload:
+    description: Allows use of /ecobal reload command
+    default: op
+  ecobalancer.command.checkrecords:
+    description: Allows use of /checkrecords command
+    default: op
+  ecobalancer.command.checkrecord:
+    description: Allows use of /checkrecord command
+    default: op
+  ecobalancer.command.restore:
+    description: Allows use of /restore command
     default: op
