@@ -64,6 +64,5 @@ tax-brackets:
 tax-account: true # Whether to use tax account
 tax-account-name: 'tax' # Tax account name
 
-[![Stargazers repo roster for @USERNAME/REPO_NAME](https://reporoster.com/stars/USERNAME/REPO_NAME)](https://github.com/USERNAME/REPO_NAME/stargazers)
-
-[![Forkers repo roster for @USERNAME/REPO_NAME](https://reporoster.com/forks/USERNAME/REPO_NAME)](https://github.com/USERNAME/REPO_NAME/network/members)
+[![Forkers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/forks/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/network/members)
+[![Stargazers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/stars/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/stargazers)
