@@ -63,3 +63,7 @@ tax-brackets:
    rate: 0.02 # Tax rate
 tax-account: true # Whether to use tax account
 tax-account-name: 'tax' # Tax account name
+
+[![Stargazers repo roster for @USERNAME/REPO_NAME](https://reporoster.com/stars/USERNAME/REPO_NAME)](https://github.com/USERNAME/REPO_NAME/stargazers)
+
+[![Forkers repo roster for @USERNAME/REPO_NAME](https://reporoster.com/forks/USERNAME/REPO_NAME)](https://github.com/USERNAME/REPO_NAME/network/members)
