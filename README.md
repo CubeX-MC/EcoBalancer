@@ -63,6 +63,4 @@ tax-brackets:
    rate: 0.02 # Tax rate
 tax-account: true # Whether to use tax account
 tax-account-name: 'tax' # Tax account name
-
-[![Forkers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/forks/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/network/members)
-[![Stargazers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/stars/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/stargazers)
+```
