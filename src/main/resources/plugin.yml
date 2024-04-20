@@ -1,5 +1,6 @@
 name: EcoBalancer
 version: '${project.version}'
+# noinspection SpellCheckingInspection
 main: org.cubexmc.ecobalancer.EcoBalancer
 api-version: '1.13'
 description: This plugin deducts money from inactive players' accounts using Vault.
@@ -7,6 +8,7 @@ author: angushushu
 website: angushushu.com
 depend: [Vault]
 softdepend: [Essentials]
+# noinspection SpellCheckingInspection
 commands:
   checkall:
     description: Clean or deduct all inactive players.
@@ -58,6 +60,7 @@ commands:
     usage: /restore <operation_id>
     aliases: [rs]
     permission: ecobalancer.command.restore
+# noinspection SpellCheckingInspection
 permissions:
   ecobalancer.command.checkall:
     description: Allows use of /checkall command

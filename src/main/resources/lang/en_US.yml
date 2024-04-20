@@ -41,7 +41,7 @@ messages:
   records_page: "%prev% &ePage &f%page%&e, total &f%total% &epages %next%"
   records_click: "&7点击查看详细信息。"
   records_footer: "&7&oUse /checkrecords [page] to view more."
-  records_error: "&cAn error occurred: %error%"
+  records_error: "&cAn error occurred. Check console to get more details."
   # record
   record_usage: "&6Usage: &f/checkrecord <operation ID> [page]"
   record_invalid_id: "&cInvalid operation ID!"
@@ -53,14 +53,14 @@ messages:
   record_player_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction%"
   record_operation_not_found: "&cOperation not found!"
   record_not_found: "&cRecord not found!"
-  record_error: "&cAn error occurred: %error%"
+  record_error: "&cAn error occurred. Check console to get more details."
   # restore
   restore_usage: "&6Usage: &f/restore <operation ID>"
   restoring_all: "&7Restoring operation %operation_id% (server-wide check)..."
   restored_all: "&aOperation %operation_id% has been restored (server-wide check)!"
   restored_player: "&aOperation %operation_id% has been restored (player check)!"
   restore_invalid_id: "&cInvalid operation ID!"
-  restore_error: "&cAn error occurred: %error%"
+  restore_error: "&cAn error occurred. Check console to get more details."
   restore_operation_not_found: "&cOperation not found!"
   restore_not_found: "&cRecord not found!"
   # stats
@@ -91,7 +91,7 @@ messages:
   perc_invalid_args: "&cInvalid arguments. &fPlease use numbers or '_' to limit the range."
   perc_success: "&6Balance &e%balance% &6is at the &e%percentile%%&6 percentile in the &e%low% - %up% &6interval."
   # taxaccount
-  tax_account_enabled: "%prefix\n&6Tax account is &aenabled.\n&6Tax account name is &6%tax_account_name%&6.\n&6Tax account balance is &6%tax_account_balance%&6."
+  tax_account_enabled: "%prefix&6Tax account is &aenabled.\n&6Tax account name is &6%tax_account_name%&6.\n&6Tax account balance is &6%tax_account_balance%&6."
   tax_account_disabled: "&6Tax account is &cdisabled."
   # sql
   sql_save_error: "&cUnable to save record:"

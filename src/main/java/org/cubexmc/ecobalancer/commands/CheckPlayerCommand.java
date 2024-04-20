@@ -1,33 +1,21 @@
 package org.cubexmc.ecobalancer.commands;
 
-import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
 import org.cubexmc.ecobalancer.EcoBalancer;
 
-public class CheckPlayerCommand implements CommandExecutor {
-    EcoBalancer plugin;
-
+public class CheckPlayerCommand extends AbstractCommand {
     public CheckPlayerCommand(EcoBalancer plugin) {
-        this.plugin = plugin;
+        super(plugin, "checkplayer");
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String s, String[] args) {
-        if (sender instanceof Player || sender.hasPermission("ecobalancer.admin")) {
-            if (args.length == 0) {
-                sender.sendMessage(plugin.getFormattedMessage("messages.enter_player_name_or_use_checkall", null));
-            } else {
-                plugin.checkPlayer(sender, args[0]);
-            }
-            return true;
+    void onCommand(CommandInfo info) {
+        final CommandSender sender = info.getSender();
+        if (info.getInput().length == 0) {
+            sender.sendMessage(plugin.getFormattedMessage("enter_player_name_or_use_checkall"));
+        } else {
+            info.checkInput(1);
+            plugin.checkPlayer(sender, info.getInput(0));
         }
-
-        return false;
     }
-
-
 }

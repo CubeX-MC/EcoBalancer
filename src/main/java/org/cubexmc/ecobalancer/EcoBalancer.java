@@ -1,49 +1,51 @@
 package org.cubexmc.ecobalancer;
 
-import net.md_5.bungee.api.chat.*;
-import net.milkbowl.vault.chat.Chat;
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.ComponentBuilder;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.TextComponent;
 import net.milkbowl.vault.economy.Economy;
-import net.milkbowl.vault.permission.Permission;
 import org.apache.commons.lang.StringUtils;
+import org.bstats.bukkit.Metrics;
+import org.bstats.charts.SimplePie;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.cubexmc.ecobalancer.commands.*;
-
-import java.io.FileOutputStream;
-import java.nio.file.Files;
-import java.sql.*;
-import java.text.SimpleDateFormat;
-import java.util.*;
+import org.cubexmc.ecobalancer.listeners.AdminLoginListener;
+import org.cubexmc.ecobalancer.util.StatementWriter;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.sql.*;
+import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import java.util.logging.FileHandler;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+import java.util.stream.Collectors;
+import java.util.zip.GZIPOutputStream;
 
 import static java.lang.Math.min;
 
-import java.util.zip.GZIPOutputStream;
-
-import org.cubexmc.ecobalancer.listeners.AdminLoginListener;
-import org.cubexmc.ecobalancer.metrics.Metrics;
-
+@SuppressWarnings({"ResultOfMethodCallIgnored", "deprecation", "SpellCheckingInspection"})
 public final class EcoBalancer extends JavaPlugin {
-    private static Economy econ = null;
-    private static Chat chat = null;
+    private Economy econ;
     private boolean deductBasedOnTime;
     private int inactiveDaysToDeduct;
-    private TreeMap<Integer, Double> taxBrackets = new TreeMap<>();
+    private final TreeMap<Integer, Double> taxBrackets = new TreeMap<>();
     private int inactiveDaysToClear;
     private FileHandler fileHandler;
-    private Logger fileLogger = Logger.getLogger("EcoBalancerFileLogger");
+    private final Logger fileLogger = Logger.getLogger("EcoBalancerFileLogger");
     private int recordRetentionDays;
     private String scheduleType;
     private List<Integer> scheduleDaysOfWeek;
@@ -54,47 +56,48 @@ public final class EcoBalancer extends JavaPlugin {
     private String taxAccountName;
     private String messagePrefix;
 
+    public final CompletableFuture<Connection> driverConnection = CompletableFuture
+            .supplyAsync(() -> {
+                final File file = new File(this.getDataFolder(), "records.db");
+                try {
+                    if (!getDataFolder().exists()) getDataFolder().mkdirs();
+                    file.createNewFile();
+                    Class.forName("org.sqlite.JDBC"); // 初始化sqlite driver静态块
+                    final Connection connection =  DriverManager.getConnection("jdbc:sqlite:" + file.getAbsolutePath());
+                    try (final Statement statement = connection.createStatement()) {
+                        statement.execute("CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, is_restored BOOLEAN NOT NULL)");
+                        statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player_name TEXT NOT NULL, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
+                    }
+                    return connection;
+                } catch (final Exception exception) {
+                    throw new RuntimeException(exception);
+                }
+            })
+            .exceptionally(exception -> {
+                final Throwable throwable = (exception.getCause() != null ? exception.getCause() : exception);
+                getLogger().log(Level.SEVERE, "无法初始化数据库.", throwable);
+                return null;
+            });
+
+    @SuppressWarnings("deprecation")
     @Override
     public void onEnable() {
-        if (!setupEconomy()) {
-            getLogger().severe(String.format("[%s] - Disabled due to no Vault dependency found!", getDescription().getName()));
-            getServer().getPluginManager().disablePlugin(this);
-            return;
-        }
+        // 不要对硬Vault实现做太多繁琐的东西.
+        econ = Objects.requireNonNull(getServer().getServicesManager().getRegistration(Economy.class)).getProvider();
 
         saveDefaultConfig();  // 保存默认配置
         loadConfiguration();  // 加载配置
 
-        // 检查db，如果不存在则创建
-        File dataFolder = getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
-        // 如果数据库文件不存在,创建它
-        if (!databaseFile.exists()) {
-            try {
-                databaseFile.createNewFile();
-            } catch (IOException e) {
-                getLogger().severe("无法创建数据库文件: " + e.getMessage());
-            }
-        }
-
-        // 建立数据库连接
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
-            // 检查 'operations' 表是否存在,如果不存在则创建它
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, is_restored BOOLEAN NOT NULL)");
-            }
-
-            // 检查 'records' 表是否存在,如果不存在则创建它
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player_name TEXT NOT NULL, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
-            }
-        } catch (SQLException e) {
-            getLogger().severe("检查或创建数据库表时出错: " + e.getMessage());
+        // 检查数据库初始化失败
+        try {
+            Objects.requireNonNull(driverConnection.get(), "Database is null!");
+        } catch (final Exception exception) {
+            getServer().getPluginManager().disablePlugin(this);
+            return;
         }
 
         long initialDelay = calculateDelayForDaily(Calendar.getInstance(), 0, 0); // 在每天的午夜12点运行
-        long cleanupPeriod = 24 * 60 * 60 * 20; // 24小时(以tick为单位)
+        long cleanupPeriod = 24L * 60L * 60L * 20L; // 24小时(以tick为单位)
         Bukkit.getScheduler().scheduleSyncRepeatingTask(this, this::cleanupRecords, initialDelay, cleanupPeriod);
 
         // Check for an existing log file and compress it if found
@@ -116,16 +119,15 @@ public final class EcoBalancer extends JavaPlugin {
             fileHandler.setFormatter(new SimpleFormatter());
             fileLogger.addHandler(fileHandler);
             fileLogger.setUseParentHandlers(false);
-        } catch (IOException e) {
-            getLogger().severe("Could not create the log file handler for EcoBalancer.");
-            e.printStackTrace();
+        } catch (IOException exception) {
+            getLogger().log(Level.SEVERE, "Could not create the log file handler for EcoBalancer.", exception);
         }
 
         // metrics
         int pluginId = 20269; // <-- Replace with the id of your plugin!
         Metrics metrics = new Metrics(this, pluginId);
         // Optional: Add custom charts
-        metrics.addCustomChart(new Metrics.SimplePie("chart_id", () -> "My value"));
+        metrics.addCustomChart(new SimplePie("chart_id", () -> "My value"));
 
         // 创建虚拟账户
         if (taxAccount && !econ.hasAccount(taxAccountName)) {
@@ -133,15 +135,18 @@ public final class EcoBalancer extends JavaPlugin {
         }
 
         getServer().getPluginManager().registerEvents(new AdminLoginListener(this), this);
-        getCommand("ecobal").setExecutor(new UtilCommand(this));
-        getCommand("checkall").setExecutor(new CheckAllCommand(this));
-        getCommand("checkplayer").setExecutor(new CheckPlayerCommand(this));
-        getCommand("stats").setExecutor(new DescripStatsCommand(this));
-        getCommand("perc").setExecutor(new PercentileCommand(this));
-        getCommand("checkrecords").setExecutor(new CheckRecordsCommand(this));
-        getCommand("checkrecord").setExecutor(new CheckRecordCommand(this));
-        getCommand("restore").setExecutor(new RestoreCommand(this));
-        getCommand("interval").setExecutor(new IntervalCommand(this));
+        final List<Function<EcoBalancer, AbstractCommand>> commandList = Arrays.asList(
+                UtilCommand::new,
+                CheckAllCommand::new,
+                CheckPlayerCommand::new,
+                DescriptionStatsCommand::new,
+                PercentileCommand::new,
+                CheckRecordsCommand::new,
+                CheckRecordCommand::new,
+                RestoreCommand::new,
+                IntervalCommand::new
+        );
+        for (final Function<EcoBalancer, AbstractCommand> command : commandList) command.apply(this);
         displayAsciiArt();
         getLogger().info("EcoBalancer enabled!");
     }
@@ -155,32 +160,25 @@ public final class EcoBalancer extends JavaPlugin {
                 "░▒████▒▒ ▓███▀ ░░ ████▓▒░░▓█  ▀█▓ ▓█   ▓██▒░██████▒",
                 "░░ ▒░ ░░ ░▒ ▒  ░░ ▒░▒░▒░ ░▒▓███▀▒ ▒▒   ▓▒█░░ ▒░▓  ░",
                 " ░ ░  ░  ░  ▒     ░ ▒ Version: " + getDescription().getVersion(),
-                "   ░   ░        ░ ░ ░ Author: " + getDescription().getAuthors().get(0),
+                "   ░   ░        ░ ░ ░ Author: " + getDescription().getAuthors().stream().findFirst().orElse(null),
                 "   ░  ░░ ░          ░ Website: " + getDescription().getWebsite(),
                 "                      Powered by CubeX"
         };
-
-        // ANSI 转义序列for colors
-        final String ANSI_RESET = "\u001B[0m";
-        final String ANSI_YELLOW = "\u001B[33m";
-        final String ANSI_GREEN = "\u001B[32m";
-        final String ANSI_CYAN = "\u001B[36m";
-        final String ANSI_RED = "\u001B[31m";
-        final String ANSI_WHITE = "\u001B[37m";
-
         // 在控制台输出彩色的 ASCII 艺术字符
         getLogger().info("");
         for (int i = 0; i < asciiArt.length; i++) {
             String line = asciiArt[i];
             if (i < 6) {
-                line = ANSI_YELLOW + line + ANSI_RESET;
+                line = "&e" + line + "&r";
             } else if (i < 9) {
                 // green since 21 characters
-                line = ANSI_YELLOW + line.substring(0, 21) + ANSI_RESET + line.substring(21) + ANSI_RESET;
-            } else if (i == 9) {
-                line = line.replace("Cube", ANSI_RED + "Cube" + ANSI_WHITE).replace("X", ANSI_WHITE + "X" + ANSI_RESET);
+                line = "&e" + line.substring(0, 21) + "&r" + line.substring(21) + "&r";
+            } else { // asciiArt有10行 期望大于9是不可能的. (i == 9)
+                line = line
+                        .replace("Cube", "&cCube&f")
+                        .replace("X", "&fX&r");
             }
-            getLogger().info(line);
+            getLogger().info(ChatColor.translateAlternateColorCodes('&', line));
         }
         getLogger().info("");
     }
@@ -229,7 +227,7 @@ public final class EcoBalancer extends JavaPlugin {
     private void loadLangFile() {
         // Load the language file based on config
         String lang = getConfig().getString("language", "en_US");
-        System.out.println("Loading language file: " + lang);
+        getLogger().log(Level.INFO, "Loading language file: " + lang);
         File langFile = new File(getDataFolder(), "lang" + File.separator + lang + ".yml");
         if (!langFile.exists()) {
             saveResource("lang" + File.separator + lang + ".yml", false);
@@ -237,45 +235,46 @@ public final class EcoBalancer extends JavaPlugin {
         langConfig = YamlConfiguration.loadConfiguration(langFile);
     }
 
+    public String getFormattedMessage(final String path) {
+        return getFormattedMessage(path, null);
+    }
+
     public String getFormattedMessage(String path, Map<String, String> placeholders) {
+        /* 修改入参是不好的做法.
         if (placeholders == null) {
             placeholders = new HashMap<>();
         }
-        placeholders.put("prefix", messagePrefix);
-        String message = langConfig.getString(path, "Message not found!");
+         */
+        String message = langConfig.getString("messages." + path, "Message not found! key:" + path);
         if (placeholders != null) {
+            placeholders.put("prefix", messagePrefix);
             for (Map.Entry<String, String> entry : placeholders.entrySet()) {
                 message = message.replace("%" + entry.getKey() + "%", entry.getValue());
             }
-        }
+        } else message=message.replace("%prefix%", messagePrefix);
 
         return ChatColor.translateAlternateColorCodes('&', message);
     }
 
     public TextComponent getFormattedMessage(String path, Map<String, String> placeholders, String[] clickablePlaceholders, TextComponent[] clickableComponents) {
-        if (placeholders == null) {
-            placeholders = new HashMap<>();
-        }
-        placeholders.put("prefix", messagePrefix);
-
-        String messageTemplate = langConfig.getString(path, "Message not found!");
+        String messageTemplate = langConfig.getString("messages." + path, "Message not found! key:" + path);
 
         // 初始化一个基础的TextComponent用于最终消息
         TextComponent finalMessage = new TextComponent("");
-
-        // 替换除clickablePlaceholders外的所有占位符
-        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
-            if (!Arrays.asList(clickablePlaceholders).contains(entry.getKey())) {
-                messageTemplate = messageTemplate.replace("%" + entry.getKey() + "%", entry.getValue());
+        if (placeholders != null) {
+            placeholders.put("prefix", messagePrefix);
+            // 替换除clickablePlaceholders外的所有占位符
+            for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+                if (!Arrays.asList(clickablePlaceholders).contains(entry.getKey())) {
+                    messageTemplate = messageTemplate.replace("%" + entry.getKey() + "%", entry.getValue());
+                }
             }
         }
 
         // 分割消息模板
         String[] messageParts = messageTemplate.split("%", -1);
 
-        for (int i = 0; i < messageParts.length; i++) {
-            String part = messageParts[i];
-
+        for (String part : messageParts) {
             // 检查这部分是否匹配任何可点击的占位符
             int placeholderIndex = -1;
             for (int j = 0; j < clickablePlaceholders.length; j++) {
@@ -309,6 +308,14 @@ public final class EcoBalancer extends JavaPlugin {
 
     @Override
     public void onDisable() {
+
+        try {
+            final Connection connection = driverConnection.get();
+            if (connection != null) connection.close();
+        } catch (final Exception ignore) {
+
+        }
+
         // Ensure all pending logs are flushed and the handler is closed
         if (fileHandler != null) {
             fileHandler.flush();
@@ -337,7 +344,7 @@ public final class EcoBalancer extends JavaPlugin {
         }
         // Compress the renamed log file into a .gz file
         File compressedFile = new File(renamedLogFile.getParent(), renamedLogFile.getName() + ".gz");
-        try (GZIPOutputStream gzos = new GZIPOutputStream(new FileOutputStream(compressedFile))) {
+        try (GZIPOutputStream gzos = new GZIPOutputStream(Files.newOutputStream(compressedFile.toPath()))) {
             Files.copy(renamedLogFile.toPath(), gzos);
         } catch (IOException e) {
             getLogger().severe("Could not compress the log file: " + e.getMessage());
@@ -348,22 +355,7 @@ public final class EcoBalancer extends JavaPlugin {
         }
     }
 
-    private boolean setupEconomy() {
-        if (getServer().getPluginManager().getPlugin("Vault") == null) {
-            getLogger().info("EcoBalancer disabled [plugin=null]");
-            return false;
-        }
-        RegisteredServiceProvider<Economy> rsp = getServer().getServicesManager().getRegistration(Economy.class);
-        if (rsp == null) {
-            getLogger().info("EcoBalancer disabled [rsp=null]");
-            return false;
-        }
-        econ = rsp.getProvider();
-        getLogger().info(""+(econ != null));
-        return econ != null;
-    }
-
-    public static Economy getEconomy() {
+    public Economy getEconomy() {
         return econ;
     }
 
@@ -372,8 +364,6 @@ public final class EcoBalancer extends JavaPlugin {
         long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
         double balance = econ.hasAccount(player) ? econ.getBalance(player) : 0;
         Double deductionRate = 0.0;
-
-        double oldBalance = balance;
 
         if (taxAccount && player.getName().equals(taxAccountName)) return;
 
@@ -386,16 +376,17 @@ public final class EcoBalancer extends JavaPlugin {
             deductionRate = 0.0; // defaultRate should be defined somewhere in your class
         }
 
-        Map<String, String> placeholders = new HashMap<>();
-        placeholders.put("player", player.getName());
-        placeholders.put("balance", String.format("%.2f", balance));
-        placeholders.put("days_offline", String.valueOf(daysOffline));
+        Map<String, String> placeholders = new HashMap<String, String>(){{
+            put("player", player.getName());
+            put("balance", String.format("%.2f", balance));
+            put("days_offline", String.valueOf(daysOffline));
+        }};
 
         // fix all negative balance
         if (balance < 0.0) {
             econ.depositPlayer(player, -1 * balance);
             placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
-            sendMessage(sender, "messages.negative_balance", placeholders, log);
+            sendMessage(sender, "negative_balance", placeholders, log);
         } else if (balance > 0.0) {
             if (deductBasedOnTime) {
                 // 计算玩家离线天数
@@ -404,31 +395,31 @@ public final class EcoBalancer extends JavaPlugin {
                     econ.withdrawPlayer(player, balance);
                     if (taxAccount) econ.depositPlayer(taxAccountName, balance); //
                     placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
-                    sendMessage(sender, "messages.offline_extreme", placeholders, log);
+                    sendMessage(sender, "offline_extreme", placeholders, log);
                 } else if (daysOffline > inactiveDaysToDeduct) {
                     // 对于超过50天未上线的玩家，按税率扣除
                     double deduction = min(balance, balance * deductionRate); // in case deductionRate is greater than 1
                     placeholders.put("deduction", String.format("%.2f", deduction));
                     econ.withdrawPlayer(player, deduction);
                     if (taxAccount) econ.depositPlayer(taxAccountName, deduction);
-                    sendMessage(sender, "messages.offline_moderate", placeholders, log);
+                    sendMessage(sender, "offline_moderate", placeholders, log);
                 } else {
-                    sendMessage(sender, "messages.offline_active", placeholders, false);
+                    sendMessage(sender, "offline_active", placeholders, false);
                 }
             } else {
                 double deduction = min(balance, balance * deductionRate); // in case deductionRate is greater than 1
                 placeholders.put("deduction", String.format("%.2f", deduction));
                 econ.withdrawPlayer(player, deduction);
                 if (taxAccount) econ.depositPlayer(taxAccountName, deduction);
-                sendMessage(sender, "messages.deduction_made", placeholders, log);
+                sendMessage(sender, "deduction_made", placeholders, log);
             }
         } else {
-            sendMessage(sender, "messages.zero_balance", placeholders, log);
+            sendMessage(sender, "zero_balance", placeholders, log);
         }
 
         double newBalance = econ.getBalance(player);
-        double deduction = oldBalance - newBalance;
-        saveRecord(player, oldBalance, newBalance, deduction, isCheckAll, operationId);
+        double deduction = balance - newBalance;
+        saveRecord(player, balance, newBalance, deduction, isCheckAll, operationId);
     }
 
     private void sendMessage(CommandSender sender, String path, Map<String, String> placeholders, boolean isLog) {
@@ -442,12 +433,11 @@ public final class EcoBalancer extends JavaPlugin {
 
         // 选择最近的一个执行时间
         switch (scheduleType) {
-            case "daily":
-                return calculateDelayForDaily(now);
             case "weekly":
                 return calculateDelayForWeekly(now);
             case "monthly":
                 return calculateDelayForMonthly(now);
+            case "daily":
             default:
                 return calculateDelayForDaily(now);
         }
@@ -545,13 +535,17 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     public void checkPlayer(CommandSender sender, String playerName) {
+        if (Bukkit.isPrimaryThread()) {
+            Bukkit.getScheduler().runTaskAsynchronously(this, () -> checkPlayer(sender, playerName));
+            return;
+        }
         OfflinePlayer target = Bukkit.getOfflinePlayer(playerName);
         if (target.hasPlayedBefore()) {
             long currentTime = System.currentTimeMillis();
             final int operationId = getNextOperationId(false);  // false for checkPlayer
             checkBalance(sender, currentTime, target, true, false, operationId);
         } else {
-            sender.sendMessage(getFormattedMessage("messages.player_not_found", null));
+            sender.sendMessage(getFormattedMessage("player_not_found", null));
         }
     }
 
@@ -576,23 +570,22 @@ public final class EcoBalancer extends JavaPlugin {
                 }
                 index += batchSize;
 
-                Map<String, String> placeholders = new HashMap<>();
-                placeholders.put("start", Integer.toString(start));
-                placeholders.put("end", Integer.toString(end));
-                placeholders.put("batch", Integer.toString(end - start));
-                placeholders.put("total_players", Integer.toString(players.length));
+                Map<String, String> placeholders = new HashMap<String, String>(){{
+                    put("start", Integer.toString(start));
+                    put("end", Integer.toString(end));
+                    put("batch", Integer.toString(end - start));
+                    put("total_players", Integer.toString(players.length));
+                }};
 
-                sendMessage(sender, "messages.players_processing", placeholders, true);
+                sendMessage(sender, "players_processing", placeholders, true);
                 if (index < players.length) {
                     // Schedule next batch
                     Bukkit.getScheduler().runTaskLaterAsynchronously(EcoBalancer.this, this, delay);
                 } else {
-                    // All players have been processed, notify the sender
+                    // All players have been processed, notify the sender.
                     // Send a message to the sender after each batch
                     calculateTotalDeduction(operationId);
-                    Bukkit.getScheduler().runTask(EcoBalancer.this, () -> {
-                        sendMessage(sender, "messages.all_players_processed", null, true);
-                    });
+                    Bukkit.getScheduler().runTask(EcoBalancer.this, () -> sendMessage(sender, "all_players_processed", null, true));
                 }
             }
         }
@@ -602,12 +595,9 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     private void calculateTotalDeduction(int operationId) {
-        // 获取数据库文件路径
-        File dataFolder = getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
         // 建立数据库连接
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+        try  {
+            final Connection connection = Objects.requireNonNull(driverConnection.get());
             // 查询该操作ID的所有记录,并计算扣除金额的总和
             try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT SUM(deduction) AS total_deduction FROM records WHERE operation_id = ?")) {
                 preparedStatement.setInt(1, operationId);
@@ -619,18 +609,15 @@ public final class EcoBalancer extends JavaPlugin {
                     }
                 }
             }
-        } catch (SQLException e) {
-            getLogger().severe("无法计算总扣除金额: " + e.getMessage());
+        } catch (Exception e) {
+            getLogger().log(Level.SEVERE, "无法计算总扣除金额.", e);
         }
     }
 
     private int getNextOperationId(boolean isCheckAll) {
-        // 获取数据库文件路径
-        File dataFolder = getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
         // 建立数据库连接
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+        try {
+            final Connection connection = Objects.requireNonNull(driverConnection.get());
             // 如果表不存在,则创建表
             try (Statement statement = connection.createStatement()) {
                 statement.execute("CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, is_restored BOOLEAN NOT NULL DEFAULT 0)");
@@ -638,10 +625,12 @@ public final class EcoBalancer extends JavaPlugin {
 
             // 插入一个新的操作记录
             try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO operations (timestamp, is_checkall, is_restored) VALUES (?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
-                preparedStatement.setLong(1, System.currentTimeMillis());
-                preparedStatement.setBoolean(2, isCheckAll);
-                preparedStatement.setBoolean(3, false);
-                preparedStatement.executeUpdate();
+                StatementWriter
+                        .newWriter(preparedStatement)
+                        .writeLong(System.currentTimeMillis())
+                        .writeBoolean(isCheckAll)
+                        .writeBoolean(false)
+                        .executeUpdate();
 
                 // 获取新插入的操作的ID
                 try (ResultSet generatedKeys = preparedStatement.getGeneratedKeys()) {
@@ -652,26 +641,15 @@ public final class EcoBalancer extends JavaPlugin {
                     }
                 }
             }
-        } catch (SQLException e) {
-            getLogger().severe("无法获取下一个操作ID: " + e.getMessage());
+        } catch (final Exception e) {
+            getLogger().log(Level.SEVERE, "无法获取下一个操作ID", e);
             return -1;  // 返回一个无效的操作ID表示出错
         }
     }
 
     public void generateHistogram(CommandSender sender, int numBars, double low, double up) {
-
-        sender.sendMessage(getFormattedMessage("messages.stats_hist_drawing", null));
-        OfflinePlayer[] players = Bukkit.getOfflinePlayers();
-        List<Double> balances = new ArrayList<>();
-
-        for (OfflinePlayer player : players) {
-            if (econ.hasAccount(player)) {
-                double balance = econ.getBalance(player);
-                if (balance >= low && balance <= up) {
-                    balances.add(balance);
-                }
-            }
-        }
+        sender.sendMessage(getFormattedMessage("stats_hist_drawing"));
+        final List<Double> balances = getBalances(low, up);
 
         double min = balances.stream().min(Double::compareTo).orElse(0.0);
         double max = balances.stream().max(Double::compareTo).orElse(0.0);
@@ -680,7 +658,7 @@ public final class EcoBalancer extends JavaPlugin {
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("min", String.format("%.2f", min));
         placeholders.put("max", String.format("%.2f", max));
-        sender.sendMessage(getFormattedMessage("messages.stats_min_max", placeholders));
+        sender.sendMessage(getFormattedMessage("stats_min_max", placeholders));
 
         int[] histogram = new int[numBars];
         for (double balance : balances) {
@@ -694,7 +672,7 @@ public final class EcoBalancer extends JavaPlugin {
         int maxBarLength = 100; // 可以根据需要调整这个值
         int maxFrequency = Arrays.stream(histogram).max().orElse(0);
 
-        sender.sendMessage(getFormattedMessage("messages.stats_hist_header", null));
+        sender.sendMessage(getFormattedMessage("stats_hist_header"));
         for (int i = 0; i < numBars; i++) {
             double lowerBound = min + i * barWidth;
             double upperBound = lowerBound + barWidth;
@@ -703,17 +681,19 @@ public final class EcoBalancer extends JavaPlugin {
 
             // 创建一个TextComponent作为可点击的条
 
-            Map<String, String> intervalPlaceholders = new HashMap<>();
-            intervalPlaceholders.put("bar", bar);
-            intervalPlaceholders.put("frequency", Integer.toString(histogram[i]));
-            intervalPlaceholders.put("low", formatNumber(lowerBound));
-            intervalPlaceholders.put("up", formatNumber(upperBound));
+            int finalI = i;
+            Map<String, String> intervalPlaceholders = new HashMap<String, String>(){{
+                put("bar", bar);
+                put("frequency", Integer.toString(histogram[finalI]));
+                put("low", formatNumber(lowerBound));
+                put("up", formatNumber(upperBound));
+            }};
 
             TextComponent clickableBar = new TextComponent(bar);
             clickableBar.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/interval balance " + lowerBound + " " + upperBound));
-            clickableBar.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder(getFormattedMessage("messages.stats_check_interval", intervalPlaceholders)).create()));
+            clickableBar.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder(getFormattedMessage("stats_check_interval", intervalPlaceholders)).create()));
 
-            TextComponent message = getFormattedMessage("messages.stats_bar", intervalPlaceholders, new String[]{"bar"}, new TextComponent[]{clickableBar});
+            TextComponent message = getFormattedMessage("stats_bar", intervalPlaceholders, new String[]{"bar"}, new TextComponent[]{clickableBar});
             sender.spigot().sendMessage(message);
         }
 
@@ -722,18 +702,17 @@ public final class EcoBalancer extends JavaPlugin {
         double median = calculateMedian(balances);
         double standardDeviation = calculateStandardDeviation(balances, mean);
 
-        Map<String, String> statsPlaceholders = new HashMap<>();
-        statsPlaceholders.put("mean", String.format("%.2f", mean));
-        statsPlaceholders.put("median", String.format("%.2f", median));
-        statsPlaceholders.put("sd", String.format("%.2f", standardDeviation));
-        sender.sendMessage(getFormattedMessage("messages.stats_mean_median", statsPlaceholders));
-        sender.sendMessage(getFormattedMessage("messages.stats_sd", statsPlaceholders));
+        new HashMap<String, String>(){{
+            put("mean", String.format("%.2f", mean));
+            put("median", String.format("%.2f", median));
+            put("sd", String.format("%.2f", standardDeviation));
+            sender.sendMessage(getFormattedMessage("stats_mean_median", this));
+            sender.sendMessage(getFormattedMessage("stats_sd", this));
+        }};
     }
 
     private double calculateMedian(List<Double> values) {
-        System.out.println("before sort");
         Collections.sort(values);
-        System.out.println("after sort");
         int size = values.size();
         if (size == 0) {
             return 0;
@@ -745,7 +724,7 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     private double calculateStandardDeviation(List<Double> values, double mean) {
-        if (values.size() == 0) {
+        if (values.isEmpty()) {
             return 0;
         }
         double sum = 0;
@@ -768,63 +747,51 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     public double calculatePercentile(double balance, double low, double high) {
-        OfflinePlayer[] players = Bukkit.getOfflinePlayers();
-        List<Double> balances = new ArrayList<>();
-
-        for (OfflinePlayer player : players) {
-            if (econ.hasAccount(player)) {
-                double playerBalance = econ.getBalance(player);
-                if (playerBalance >= low && playerBalance <= high) {
-                    balances.add(playerBalance);
-                }
-            }
-        }
-
+        final List<Double> balances = getBalances(low, high);
         int totalPlayers = balances.size();
         int playersBelow = (int) balances.stream().filter(b -> b < balance).count();
-
         return (double) playersBelow / totalPlayers * 100;
     }
 
     private void saveRecord(OfflinePlayer player, double oldBalance, double newBalance, double deduction, boolean isCheckAll, int operationId) {
-        // 获取数据库文件路径
-        File dataFolder = getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
         // 建立数据库连接
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+        try  {
+            final Connection connection = Objects.requireNonNull(driverConnection.get());
             // 如果表不存在,则创建表
             try (Statement statement = connection.createStatement()) {
                 statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player_name TEXT NOT NULL, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
             }
 
             // 插入记录
-            try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO records (operation_id, player_name, player, old_balance, new_balance, deduction, timestamp, is_checkall) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
-                preparedStatement.setInt(1, operationId);
-                preparedStatement.setString(2, player.getName());
-                preparedStatement.setString(3, player.getUniqueId().toString());
-                preparedStatement.setDouble(4, oldBalance);
-                preparedStatement.setDouble(5, newBalance);
-                preparedStatement.setDouble(6, deduction);
-                preparedStatement.setLong(7, System.currentTimeMillis());
-                preparedStatement.setBoolean(8, isCheckAll);
-                preparedStatement.executeUpdate();
+            try (StatementWriter writer = StatementWriter.newWriter(connection, "INSERT INTO records (operation_id, player_name, player, old_balance, new_balance, deduction, timestamp, is_checkall) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                writer
+                        .writeInt(operationId)
+                        .writeString(player.getName())
+                        .writeString(player.getUniqueId().toString())
+                        .writeDouble(oldBalance)
+                        .writeDouble(newBalance)
+                        .writeDouble(deduction)
+                        .writeLong(System.currentTimeMillis())
+                        .writeBoolean(isCheckAll)
+                        .executeUpdate();
             }
-        } catch (SQLException e) {
-            getLogger().severe(getFormattedMessage("messages.sql_save_error", null) + e.getMessage());
+        } catch (Exception e) {
+            getLogger().severe(getFormattedMessage("sql_save_error") + e.getMessage());
+        }
+    }
+
+    private void deleteRecord(final String sql, final int operationId) throws Exception {
+        try (final StatementWriter writer = StatementWriter.newWriter(Objects.requireNonNull(driverConnection.get()), sql)) {
+            writer.writeInt(operationId).executeUpdate();
         }
     }
 
     private void cleanupRecords() {
         // 计算过期时间
-        long expirationTime = System.currentTimeMillis() - recordRetentionDays * 24 * 60 * 60 * 1000;
-
-        // 获取数据库文件路径
-        File dataFolder = getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
+        long expirationTime = System.currentTimeMillis() - (long) recordRetentionDays * 24 * 60 * 60 * 1000;
         // 建立数据库连接
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+        try {
+            final Connection connection = Objects.requireNonNull(driverConnection.get());
             // 首先,我们需要找到所有过期的操作ID
             try (PreparedStatement selectExpiredOperations = connection.prepareStatement("SELECT id FROM operations WHERE timestamp < ?")) {
                 selectExpiredOperations.setLong(1, expirationTime);
@@ -833,21 +800,23 @@ public final class EcoBalancer extends JavaPlugin {
                         int operationId = expiredOperations.getInt("id");
 
                         // 删除records表中所有与该操作ID相关的记录
-                        try (PreparedStatement deleteRecords = connection.prepareStatement("DELETE FROM records WHERE operation_id = ?")) {
-                            deleteRecords.setInt(1, operationId);
-                            deleteRecords.executeUpdate();
-                        }
-
+                        deleteRecord("DELETE FROM records WHERE operation_id = ?", operationId);
                         // 删除operations表中的该操作记录
-                        try (PreparedStatement deleteOperation = connection.prepareStatement("DELETE FROM operations WHERE id = ?")) {
-                            deleteOperation.setInt(1, operationId);
-                            deleteOperation.executeUpdate();
-                        }
+                        deleteRecord("DELETE FROM operations WHERE id = ?", operationId);
                     }
                 }
             }
-        } catch (SQLException e) {
-            getLogger().severe(getFormattedMessage("messages.sql_clean_error", null) + e.getMessage());
+        } catch (final Exception e) {
+            getLogger().log(Level.SEVERE, getFormattedMessage("sql_clean_error"), e);
         }
+    }
+
+    private List<Double> getBalances(final double low, final double high) {
+        return Arrays
+                .stream(Bukkit.getOfflinePlayers())
+                .filter(econ::hasAccount)
+                .map(econ::getBalance)
+                .filter(balance -> balance >= low && balance <= high)
+                .collect(Collectors.toList());
     }
 }

@@ -2,187 +2,132 @@ package org.cubexmc.ecobalancer.commands;
 
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.TextComponent;
+import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabExecutor;
 import org.bukkit.util.StringUtil;
 import org.cubexmc.ecobalancer.EcoBalancer;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
-public class IntervalCommand implements TabExecutor {
-    private final EcoBalancer plugin;
+public class IntervalCommand extends AbstractCommand {
 
     public IntervalCommand(EcoBalancer plugin) {
-        this.plugin = plugin;
+        super(plugin, "interval");
+    }
+
+    private <T> T getWithIndex(
+            final int index,
+            final CommandUtil.IntToBooleanFunction condition,
+            final Supplier<T> defaultValue,
+            final String n,
+            final CommandUtil.IntBiFunction<T> getter
+    ) {
+        return condition.apply(index) ? getter.get(index, plugin.getFormattedMessage("interval_invalid_" + n)) : defaultValue.get();
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        String sortBy = "alphabet";
-        double low = Double.NEGATIVE_INFINITY;
-        double up = Double.POSITIVE_INFINITY;
-        int page = 1;
-
-        if (args.length > 0) {
-            if (args[0].equalsIgnoreCase("alphabet") || args[0].equalsIgnoreCase("balance")) {
-                sortBy = args[0].toLowerCase();
-                if (args.length > 1) {
-                    try {
-                        low = args[1].equals("_") ? Double.NEGATIVE_INFINITY : Double.parseDouble(args[1]);
-                        if (args.length > 2) {
-                            try {
-                                up = args[2].equals("_") ? Double.POSITIVE_INFINITY : Double.parseDouble(args[2]);
-                                if (args.length > 3) {
-                                    try {
-                                        page = Integer.parseInt(args[3]);
-                                    } catch (NumberFormatException e) {
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
-                                        return true;
-                                    }
-                                }
-                            } catch (NumberFormatException e) {
-                                sender.sendMessage(plugin.getFormattedMessage("messages.interval_invalid_up", null));
-                                return true;
-                            }
-                        }
-                    } catch (NumberFormatException e) {
-                        sender.sendMessage(plugin.getFormattedMessage("messages.interval_invalid_low", null));
-                        return true;
-                    }
-                }
+    void onCommand(CommandInfo info) {
+        final int length = info.getInput().length;
+        String sortBy;
+        boolean a = false;
+        if (length > 0) {
+            final String sort = info.getInput(0).toLowerCase(Locale.ROOT);
+            if (sort.equals("alphabet") || sort.equals("balance")) {
+                sortBy = sort;
+                a = true;
             } else {
-                try {
-                    low = args[0].equals("_") ? Double.NEGATIVE_INFINITY : Double.parseDouble(args[0]);
-                    if (args.length > 1) {
-                        try {
-                            up = args[1].equals("_") ? Double.POSITIVE_INFINITY : Double.parseDouble(args[1]);
-                            if (args.length > 2) {
-                                try {
-                                    page = Integer.parseInt(args[2]);
-                                } catch (NumberFormatException e) {
-                                    sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
-                                    return true;
-                                }
-                            }
-                        } catch (NumberFormatException e) {
-                            sender.sendMessage(plugin.getFormattedMessage("messages.interval_invalid_up", null));
-                            return true;
-                        }
-                    }
-                } catch (NumberFormatException e) {
-                    sender.sendMessage(plugin.getFormattedMessage("messages.interval_invalid_low", null));
-                    return true;
-                }
+                sortBy = "alphabet";
             }
+        } else {
+            sortBy = "alphabet";
         }
-
-        OfflinePlayer[] players = Bukkit.getOfflinePlayers();
-        List<OfflinePlayer> matchedPlayers = new ArrayList<>();
-
-        sender.sendMessage(plugin.getFormattedMessage("messages.interval_collecting", null));
-        for (OfflinePlayer player : players) {
-            if (plugin.getEconomy().hasAccount(player)) {
-                double balance = plugin.getEconomy().getBalance(player);
-                if (balance >= low && balance <= up) {
-                    matchedPlayers.add(player);
-                }
+        double low = getWithIndex(a ? 1 : 0, index -> length > index, () -> Double.NEGATIVE_INFINITY, "low", info::getInputAsDouble);
+        double up = getWithIndex(a ? 2 : 1, index -> length > index, () -> Double.POSITIVE_INFINITY, "up", info::getInputAsDouble);
+        int page = getWithIndex(a ? 3 : 2, index -> length > index, () -> 1, "page", info::getInputAsInt);
+        CompletableFuture.runAsync(() -> {
+            final Economy economy = plugin.getEconomy();
+            final List<OfflinePlayer> matchedPlayers = Arrays
+                    .stream(Bukkit.getOfflinePlayers())
+                    .filter(economy::hasAccount)
+                    .filter(player -> {
+                        final double balance = economy.getBalance(player);
+                        return balance >= low && balance <= up;
+                    })
+                    .collect(Collectors.toList());
+            final CommandSender sender = info.getSender();
+            sender.sendMessage(plugin.getFormattedMessage("interval_sorting"));
+            if (sortBy.equals("balance")) {
+                matchedPlayers.sort((p1, p2) -> Double.compare(economy.getBalance(p2), economy.getBalance(p1)));
+            } else {
+                matchedPlayers.sort(Comparator.comparing(OfflinePlayer::getName));
             }
-        }
-        sender.sendMessage(plugin.getFormattedMessage("messages.interval_sorting", null));
-        if (sortBy.equals("balance")) {
-            matchedPlayers.sort((p1, p2) -> Double.compare(plugin.getEconomy().getBalance(p2), plugin.getEconomy().getBalance(p1)));
-        } else {
-            matchedPlayers.sort(Comparator.comparing(OfflinePlayer::getName));
-        }
-        int pageSize = 10; // 每页显示10个玩家
-        int totalPages = (matchedPlayers.size() + pageSize - 1) / pageSize;
-
-        if (page < 1 || page > totalPages) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
-            return true;
-        }
-
-        int start = (page - 1) * pageSize;
-        int end = Math.min(start + pageSize, matchedPlayers.size());
-
-        Map<String, String> headerPlaceholders = new HashMap<>();
-        headerPlaceholders.put("low", String.format("%.2f", low));
-        headerPlaceholders.put("up", String.format("%.2f", up));
-        sender.sendMessage(plugin.getFormattedMessage("messages.interval_header", headerPlaceholders));
-
-        for (int i = start; i < end; i++) {
-            OfflinePlayer player = matchedPlayers.get(i);
-            double balance = plugin.getEconomy().getBalance(player);
-            long lastPlayed = player.getLastPlayed();
-            long currentTime = System.currentTimeMillis();
-            long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
-
-            Map<String, String> placeholders = new HashMap<>();
-            placeholders.put("player", player.getName());
-            placeholders.put("balance", String.format("%.2f", balance));
-            placeholders.put("days_offline", String.valueOf(daysOffline));
-
-            sender.sendMessage(plugin.getFormattedMessage("messages.interval_player", placeholders));
-        }
-
-        Map<String, String> footerPlaceholders = new HashMap<>();
-        footerPlaceholders.put("page", String.valueOf(page));
-        footerPlaceholders.put("total", String.valueOf(totalPages));
-        // add clickable next and previous page messages
-        TextComponent previouwPage = new TextComponent();
-        TextComponent nextPage = new TextComponent();
-        if (page > 1) {
-            previouwPage.setText(plugin.getFormattedMessage("messages.prev_page", null));
-            previouwPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/interval " + sortBy + " " + low + " " + up + " " + (page - 1)));
-        } else {
-            previouwPage.setText(plugin.getFormattedMessage("messages.no_prev_page", null));
-        }
-        if (page < totalPages) {
-            nextPage.setText(plugin.getFormattedMessage("messages.next_page", null));
-            nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/interval " + sortBy + " " + low + " " + up + " " + (page + 1)));
-        } else {
-            nextPage.setText(plugin.getFormattedMessage("messages.no_next_page", null));
-        }
-        footerPlaceholders.put("prev", previouwPage.toPlainText());
-        footerPlaceholders.put("next", nextPage.toPlainText());
-
-        TextComponent message = plugin.getFormattedMessage("messages.interval_page", footerPlaceholders, new String[]{"prev", "next"}, new TextComponent[]{previouwPage, nextPage});
-        sender.spigot().sendMessage(message);
-        sender.sendMessage(plugin.getFormattedMessage("messages.interval_footer", null));
-
-        return true;
-    }
-
-    private boolean isDouble(String value) {
-        try {
-            Double.parseDouble(value);
-            return true;
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    private int parseIntOrDefault(String value, int defaultValue, CommandSender sender) {
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
-            return defaultValue;
-        }
+            final int pageSize = 10;
+            final int totalPages = (matchedPlayers.size() + pageSize - 1) / pageSize;
+            if (page < 1 || page > totalPages) {
+                sender.sendMessage(plugin.getFormattedMessage("invalid_page"));
+            }
+            int start = (page - 1) * pageSize;
+            int end = Math.min(start + pageSize, matchedPlayers.size());
+            new HashMap<String, String>(){{
+                put("low", String.format("%.2f", low));
+                put("up", String.format("%.2f", up));
+                sender.sendMessage(plugin.getFormattedMessage("interval_header", this));
+            }};
+            for (int i = start; i < end; i++) {
+                final OfflinePlayer player = matchedPlayers.get(i);
+                final double balance = economy.getBalance(player);
+                long lastPlayed = player.getLastPlayed();
+                long currentTime = System.currentTimeMillis();
+                long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
+                new HashMap<String, String>(){{
+                    put("player", player.getName());
+                    put("balance", String.format("%.2f", balance));
+                    put("days_offline", String.valueOf(daysOffline));
+                    sender.sendMessage(plugin.getFormattedMessage("interval_player", this));
+                }};
+            }
+            // add clickable next and previous page messages
+            TextComponent previousPage = new TextComponent();
+            TextComponent nextPage = new TextComponent();
+            final String b = "/interval " + sortBy + " " + low + " " + up + " ";
+            if (page > 1) {
+                previousPage.setText(plugin.getFormattedMessage("prev_page"));
+                previousPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, b + (page - 1)));
+            } else {
+                previousPage.setText(plugin.getFormattedMessage("no_prev_page"));
+            }
+            if (page < totalPages) {
+                nextPage.setText(plugin.getFormattedMessage("next_page"));
+                nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, b + (page + 1)));
+            } else {
+                nextPage.setText(plugin.getFormattedMessage("no_next_page"));
+            }
+            TextComponent message = plugin.getFormattedMessage(
+                    "interval_page",
+                    new HashMap<String, String>(){{
+                        put("prev", previousPage.toPlainText());
+                        put("next", nextPage.toPlainText());
+                    }},
+                    new String[]{"prev", "next"},
+                    new TextComponent[]{previousPage, nextPage}
+            );
+            sender.spigot().sendMessage(message);
+            sender.sendMessage(plugin.getFormattedMessage("interval_footer"));
+        });
     }
 
     @Override
-    public final List<String> onTabComplete(final CommandSender commandSender, final Command command, final String s, final String[] strings) {
-        final int size = 2;
-        final Collection<String> ret = new ArrayList<>(size);
-        if (1 == strings.length) {
-            ret.add("alphabet");
-            ret.add("balance");
-        }
-        final String lowerCase = strings[0].toLowerCase(Locale.ROOT);
-        return StringUtil.copyPartialMatches(lowerCase, ret, new ArrayList<>(size));
+    void onTabComplete(TabCompleteInfo info) {
+        if (info.getInput().length == 1)
+            info.setReturnResult(StringUtil.copyPartialMatches(
+                    info.getInput(0).toLowerCase(Locale.ROOT),
+                    Arrays.asList("alphabet", "balance"),
+                    new ArrayList<>()
+            ));
     }
 }

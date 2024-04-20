@@ -1,193 +1,125 @@
 package org.cubexmc.ecobalancer.commands;
 
-import net.md_5.bungee.api.chat.ClickEvent;
-import net.md_5.bungee.api.chat.TextComponent;
-import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabExecutor;
 import org.bukkit.util.StringUtil;
 import org.cubexmc.ecobalancer.EcoBalancer;
+import org.cubexmc.ecobalancer.util.StatementWriter;
 
-import java.io.File;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
-public class CheckRecordCommand implements TabExecutor {
-    private final EcoBalancer plugin;
+public class CheckRecordCommand extends AbstractCommand {
 
     public CheckRecordCommand(EcoBalancer plugin) {
-        this.plugin = plugin;
+        super(plugin, "checkrecord");
+    }
+
+    private static class SetInfo {
+        final int operationId;
+
+        private SetInfo(final int operationId) {
+            this.operationId=operationId;
+        }
+    }
+
+    private void handleDetail(final CommandSender sender, final ResultSet resultSet, final SetInfo info) throws SQLException {
+        final String playerName = resultSet.getString("player_name");
+        double oldBalance = resultSet.getDouble("old_balance");
+        double newBalance = resultSet.getDouble("new_balance");
+        double deduction = resultSet.getDouble("deduction");
+
+        Map<String, String> detailPlaceholders = new HashMap<>();
+        detailPlaceholders.put("player", playerName);
+        detailPlaceholders.put("old_balance", String.format("%.2f", oldBalance));
+        detailPlaceholders.put("new_balance", String.format("%.2f", newBalance));
+        detailPlaceholders.put("deduction", String.format("%.2f", deduction));
+
+        if (info != null) {
+            detailPlaceholders.put("operation_id", String.valueOf(info.operationId));
+        }
+        sender.sendMessage(plugin.getFormattedMessage("record_" + (info == null ? "all" : "player") + "_detail", detailPlaceholders));
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length < 1 || args.length > 3) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.record_usage", null));
-            return true;
+    void onCommand(CommandInfo info) {
+        final int length = info.getInput().length;
+        final CommandSender sender = info.getSender();
+        if (length == 0 || length > 3) {
+            sender.sendMessage(plugin.getFormattedMessage("record_usage"));
+            return;
         }
-
-        int operationId;
-        try {
-            operationId = Integer.parseInt(args[0]);
-        } catch (NumberFormatException e) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.record_invalid_id", null));
-            return true;
-        }
-
-        int page = 1;
-        String sortBy = "deduction";
-        if (args.length >= 2) {
-            if (args[1].equalsIgnoreCase("alphabet") || args[1].equalsIgnoreCase("deduction")) {
-                sortBy = args[1].toLowerCase();
-                if (args.length == 3) {
-                    try {
-                        page = Integer.parseInt(args[2]);
-                    } catch (NumberFormatException e) {
-                        sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
-                        return true;
-                    }
+        int operationId = info.getInputAsInt(0, plugin.getFormattedMessage("record_invalid_id"));
+        int page;
+        String sortBy;
+        if (length >= 2) {
+            final String inputSortBy = info.getInput(1).toLowerCase(Locale.ROOT);
+            boolean a = false;
+            if (inputSortBy.equals("alphabet") || inputSortBy.equals("deduction")) {
+                sortBy=inputSortBy;
+                if (length == 3) {
+                    a=true;
                 }
             } else {
-                try {
-                    page = Integer.parseInt(args[1]);
-                } catch (NumberFormatException e) {
-                    sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
-                    return true;
-                }
+                sortBy = "deduction";
             }
+            page = info.getInputAsInt(a ? 2 : 1, plugin.getFormattedMessage("invalid_page"));
+        } else {
+            sortBy = "deduction";
+            page = 1;
         }
-
-        // 获取数据库文件路径
-        File dataFolder = plugin.getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
-        // 从数据库中查询对应的操作
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
-            try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM operations WHERE id = ?")) {
-                preparedStatement.setInt(1, operationId);
-                try (ResultSet resultSet = preparedStatement.executeQuery()) {
-                    if (resultSet.next()) {
-                        boolean isCheckAll = resultSet.getBoolean("is_checkall");
-                        long timestamp = resultSet.getLong("timestamp");
-
-                        if (isCheckAll) {
-                            Map<String, String> placeholders = new HashMap<>();
+        CompletableFuture.runAsync(() -> {
+            try {
+                final Connection connection = Objects.requireNonNull(plugin.driverConnection.get());
+                try (final PreparedStatement statement = connection.prepareStatement("SELECT * FROM operations WHERE id = ?")) {
+                    statement.setInt(1, operationId);
+                    try (final ResultSet resultSet = statement.executeQuery()) {
+                        if (resultSet.next()) {
+                            boolean checkAll = resultSet.getBoolean("is_checkall");
+                            final Map<String, String> placeholders = new HashMap<>();
                             placeholders.put("operation_id", String.valueOf(operationId));
-                            sender.sendMessage(plugin.getFormattedMessage("messages.record_all_header", placeholders));
-
-                            int pageSize = 10;
-                            int offset = (page - 1) * pageSize;
-
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? ORDER BY " + (sortBy.equals("alphabet") ? "player_name" : "deduction DESC") + " LIMIT ? OFFSET ?")) {
-                                selectStatement.setInt(1, operationId);
-                                selectStatement.setInt(2, pageSize);
-                                selectStatement.setInt(3, offset);
-
-                                try (ResultSet allRecords = selectStatement.executeQuery()) {
-                                    int count = 0;
-                                    while (allRecords.next()) {
-                                        String playerName = allRecords.getString("player_name");
-                                        double oldBalance = allRecords.getDouble("old_balance");
-                                        double newBalance = allRecords.getDouble("new_balance");
-                                        double deduction = allRecords.getDouble("deduction");
-
-                                        Map<String, String> detailPlaceholders = new HashMap<>();
-                                        detailPlaceholders.put("player", playerName);
-                                        detailPlaceholders.put("old_balance", String.format("%.2f", oldBalance));
-                                        detailPlaceholders.put("new_balance", String.format("%.2f", newBalance));
-                                        detailPlaceholders.put("deduction", String.format("%.2f", deduction));
-
-                                        String message = plugin.getFormattedMessage("messages.record_all_detail", detailPlaceholders);
-                                        sender.sendMessage(message);
-                                        count++;
-                                    }
-                                }
-                            }
-
-                            try (PreparedStatement countStatement = connection.prepareStatement("SELECT COUNT(*) AS total FROM records WHERE operation_id = ?")) {
-                                countStatement.setInt(1, operationId);
-                                try (ResultSet countResult = countStatement.executeQuery()) {
-                                    if (countResult.next()) {
-                                        int total = countResult.getInt("total");
-                                        int totalPages = (int) Math.ceil((double) total / pageSize);
-                                        Map<String, String> pagePlaceholders = new HashMap<>();
-                                        pagePlaceholders.put("page", String.valueOf(page));
-                                        pagePlaceholders.put("total", String.valueOf(totalPages));
-
-                                        // add clickable next and previous page messages
-                                        TextComponent previouwPage = new TextComponent();
-                                        TextComponent nextPage = new TextComponent();
-                                        if (page > 1) {
-                                            previouwPage.setText(plugin.getFormattedMessage("messages.prev_page", null));
-                                            previouwPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecord " + operationId + " " + (page - 1)));
-                                        } else {
-                                            previouwPage.setText(plugin.getFormattedMessage("messages.no_prev_page", null));
-                                        }
-                                        if (page < totalPages) {
-                                            nextPage.setText(plugin.getFormattedMessage("messages.next_page", null));
-                                            nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecord " + operationId + " " + (page + 1)));
-                                        } else {
-                                            nextPage.setText(plugin.getFormattedMessage("messages.no_next_page", null));
-                                        }
-                                        pagePlaceholders.put("prev", previouwPage.toPlainText());
-                                        pagePlaceholders.put("next", nextPage.toPlainText());
-
-                                        TextComponent message = plugin.getFormattedMessage("messages.record_page", pagePlaceholders, new String[]{"prev", "next"}, new TextComponent[]{previouwPage, nextPage});
-                                        sender.spigot().sendMessage(message);
-
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_footer", null));
+                            if (checkAll) sender.sendMessage(plugin.getFormattedMessage("record_all_header", placeholders));
+                            final int pageSize = 10;
+                            final int offset = (page - 1) * pageSize;
+                            try (PreparedStatement select = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? " + (checkAll
+                                    ? "ORDER BY "  + (sortBy.equals("alphabet") ? "player_name" : "deduction DESC") + " LIMIT ? OFFSET ?"
+                                    : " AND deduction != 0.0"
+                            ))) {
+                                final StatementWriter writer = StatementWriter.newWriter(select).writeInt(operationId);
+                                if (checkAll) writer.writeInt(pageSize).writeInt(offset);
+                                try (final ResultSet result = select.executeQuery()) {
+                                    if (checkAll) {
+                                        while (result.next()) handleDetail(sender, result, null);
+                                    } else if (result.next()) {
+                                        sender.sendMessage(plugin.getFormattedMessage("record_player_header", placeholders));
+                                        handleDetail(sender, result, new SetInfo(operationId));
+                                    } else {
+                                        sender.sendMessage(plugin.getFormattedMessage("record_not_found"));
                                     }
                                 }
                             }
                         } else {
-                            // 查询单个玩家的记录
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? AND deduction != 0.0")) {
-                                selectStatement.setInt(1, operationId);
-                                try (ResultSet allRecords = selectStatement.executeQuery()) {
-                                    if (allRecords.next()) {
-                                        String playerName = allRecords.getString("player_name");
-                                        double oldBalance = allRecords.getDouble("old_balance");
-                                        double newBalance = allRecords.getDouble("new_balance");
-                                        double deduction = allRecords.getDouble("deduction");
-
-                                        Map<String, String> placeholders = new HashMap<>();
-                                        placeholders.put("operation_id", String.valueOf(operationId));
-                                        placeholders.put("player", playerName);
-                                        placeholders.put("old_balance", String.format("%.2f", oldBalance));
-                                        placeholders.put("new_balance", String.format("%.2f", newBalance));
-                                        placeholders.put("deduction", String.format("%.2f", deduction));
-
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_player_header", placeholders));
-                                        String message = plugin.getFormattedMessage("messages.record_player_detail", placeholders);
-                                        sender.sendMessage(message);
-                                    } else {
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_not_found", null));
-                                    }
-                                }
-                            }
+                            sender.sendMessage(plugin.getFormattedMessage("record_invalid_id"));
                         }
-                    } else {
-                        sender.sendMessage(plugin.getFormattedMessage("messages.record_invalid_id", null));
                     }
                 }
+            } catch (final Exception exception) {
+                sender.sendMessage(plugin.getFormattedMessage("record_error"));
             }
-        } catch (SQLException e) {
-            Map<String, String> errorPlaceholders = new HashMap<>();
-            sender.sendMessage(plugin.getFormattedMessage("messages.record_error", errorPlaceholders));
-        }
-
-        return true;
+        });
     }
 
     @Override
-    public final List<String> onTabComplete(final CommandSender commandSender, final Command command, final String s, final String[] strings) {
-        final int size = 2;
-        final Collection<String> ret = new ArrayList<>(size);
-        if (2 == strings.length) {
-            ret.add("deduction");
-            ret.add("alphabet");
+    void onTabComplete(TabCompleteInfo info) {
+        if (info.getInput().length == 2) {
+            info.setReturnResult(StringUtil.copyPartialMatches(
+                    info.getInput(1).toLowerCase(Locale.ROOT),
+                    Arrays.asList("deduction", "alphabet"),
+                    new ArrayList<>()
+            ));
         }
-        final String lowerCase = strings[1].toLowerCase(Locale.ROOT);
-        return StringUtil.copyPartialMatches(lowerCase, ret, new ArrayList<>(size));
     }
 }

@@ -2,104 +2,84 @@ package org.cubexmc.ecobalancer.commands;
 
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.cubexmc.ecobalancer.EcoBalancer;
 
-import java.io.File;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.logging.Level;
 
-public class RestoreCommand implements CommandExecutor {
-    private final EcoBalancer plugin;
+public class RestoreCommand extends AbstractCommand {
 
     public RestoreCommand(EcoBalancer plugin) {
-        this.plugin = plugin;
+        super(plugin, "restore");
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length != 1) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.restore_usage", null));
-            return true;
-        }
-
+    void onCommand(CommandInfo info) {
+        info.checkInput(1, plugin.getFormattedMessage("restore_usage"));
+        final CommandSender sender = info.getSender();
         int operationId;
         try {
-            operationId = Integer.parseInt(args[0]);
-        } catch (NumberFormatException e) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.restore_invalid_id", null));
-            return true;
+            operationId = Integer.parseInt(info.getInput(0));
+        } catch (final NumberFormatException exception) {
+            sender.sendMessage(plugin.getFormattedMessage("restore_invalid_id"));
+            return;
         }
-
-        // 获取数据库文件路径
-        File dataFolder = plugin.getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
-        // 从数据库中查询对应的操作
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
-            try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM operations WHERE id = ?")) {
-                preparedStatement.setInt(1, operationId);
-                try (ResultSet resultSet = preparedStatement.executeQuery()) {
-                    if (resultSet.next()) {
-                        boolean isCheckAll = resultSet.getBoolean("is_checkall");
-
-                        if (isCheckAll) {
-                            Map<String, String> placeholders = new HashMap<>();
-                            placeholders.put("operation_id", String.valueOf(operationId));
-                            // 提示正在恢复所有玩家的余额
-                            sender.sendMessage(plugin.getFormattedMessage("messages.restoring_all", placeholders));
-                            // 恢复所有玩家的余额
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? AND deduction != 0.0")) {
-                                selectStatement.setInt(1, operationId);
-                                try (ResultSet allRecords = selectStatement.executeQuery()) {
-                                    while (allRecords.next()) {
-                                        String playerUUID = allRecords.getString("player");
-                                        double deduction = allRecords.getDouble("deduction");
-                                        OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(playerUUID));
+        // restore_operation_not_found
+        CompletableFuture.runAsync(() -> {
+            try {
+                final Connection connection = Objects.requireNonNull(plugin.driverConnection.get());
+                try (final PreparedStatement statement = connection.prepareStatement("SELECT * FROM operations WHERE id = ?")) {
+                    statement.setInt(1, operationId);
+                    try (final ResultSet resultSet = statement.executeQuery()) {
+                        if (!resultSet.next()) {
+                            sender.sendMessage(plugin.getFormattedMessage("restore_operation_not_found"));
+                            return;
+                        }
+                        @SuppressWarnings("SpellCheckingInspection") final boolean checkAll = resultSet.getBoolean("is_checkall");
+                        try (final PreparedStatement select = connection.prepareStatement(
+                                "SELECT * FROM records WHERE operation_id = ?" + (checkAll ? " AND deduction != 0.0" : "")
+                        )) {
+                            select.setInt(1, operationId);
+                            try (final ResultSet record = select.executeQuery()) {
+                                if (checkAll) {
+                                    final Map<String, String> placeholder = new HashMap<String, String>(){{ put("operation_id", String.valueOf(operationId)); }};
+                                    sender.sendMessage(plugin.getFormattedMessage("restoring_all", placeholder));
+                                    while (record.next()) {
+                                        final double deduction = record.getDouble("deduction");
+                                        final OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(record.getString("player")));
                                         plugin.getEconomy().depositPlayer(offlinePlayer, deduction);
                                     }
-                                }
-                            }
-                            sender.sendMessage(plugin.getFormattedMessage("messages.restored_all", placeholders));
-                        } else {
-                            // 只恢复单个玩家的余额
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ?")) {
-                                selectStatement.setInt(1, operationId);
-                                try (ResultSet record = selectStatement.executeQuery()) {
+                                    sender.sendMessage(plugin.getFormattedMessage("restored_all", placeholder));
+                                } else {
                                     if (record.next()) {
-                                        String playerUUID = record.getString("player");
-                                        double deduction = record.getDouble("deduction");
-                                        OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(playerUUID));
+                                        final OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(record.getString("player")));
+                                        final double deduction = record.getDouble("deduction");
                                         plugin.getEconomy().depositPlayer(offlinePlayer, deduction);
-                                        Map<String, String> placeholders = new HashMap<>();
-                                        placeholders.put("operation_id", String.valueOf(operationId));
-                                        placeholders.put("player", offlinePlayer.getName());
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.restored_player", placeholders));
+                                        new HashMap<String, String>(){{
+                                            put("operation_id", String.valueOf(operationId));
+                                            put("player", offlinePlayer.getName());
+                                            sender.sendMessage(plugin.getFormattedMessage("restored_player", this));
+                                        }};
                                     } else {
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.restore_not_found", null));
+                                        sender.sendMessage(plugin.getFormattedMessage("restore_not_found"));
                                     }
                                 }
                             }
                         }
-                        // 在恢复操作后,更新操作的 is_restored 字段
-                        try (PreparedStatement updateStatement = connection.prepareStatement("UPDATE operations SET is_restored = 1 WHERE id = ?")) {
-                            updateStatement.setInt(1, operationId);
-                            updateStatement.executeUpdate();
-                        }
-                    } else {
-                        sender.sendMessage(plugin.getFormattedMessage("messages.restore_operation_not_found", null));
                     }
                 }
+            } catch (final Exception exception) {
+                plugin.getLogger().log(Level.WARNING, "Failed to restore data with operation id " + operationId, exception);
+                sender.sendMessage(plugin.getFormattedMessage("restore_error"));
             }
-        } catch (SQLException e) {
-            Map<String, String> errorPlaceholders = new HashMap<>();
-            sender.sendMessage(plugin.getFormattedMessage("messages.restore_error", errorPlaceholders));
-        }
-
-        return true;
+        });
     }
 }
