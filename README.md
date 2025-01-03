@@ -1,68 +1,71 @@
-# EcoBalancer: A Smart Minecraft Economy Plugin
+# EcoBalancer: 智能经济平衡插件
 
-EcoBalancer is a smart Minecraft economy plugin that optimizes your server's economy through an intelligent tax system for inactive players. It promotes fair competition, creates an active gaming environment, and provides smart management solutions for your server's economy.
+[English](README_en.md) | 简体中文
 
-## Key Features
+EcoBalancer 是一个智能的 Minecraft 经济插件，通过对不活跃玩家实施智能税收系统来优化服务器经济。它促进公平竞争，创造活跃的游戏环境，并为服务器经济提供智能管理解决方案。
 
-- Automated and configurable tax settings
-- Tax revenue saved into a public account
-- Wealth distribution histogram
-- Basic statistics like mean and standard deviation for player balance
+## 主要特点
+
+- 自动化且可配置的税收设置
+- 税收收入存入公共账户
+- 财富分配直方图
+- 玩家余额的基本统计数据（如平均值和标准差）
 
 ![Imgur](https://i.imgur.com/0eXcPeO.gif)
 
 ![Imgur](https://imgur.com/L7wagZ9.gif)
 
-## Features
+## 功能特性
 
-- Automated routine taxing (daily/weekly/monthly) of inactive player accounts
-- Customizable deduction rates based on balance classes and activity levels
-- Manual taxation commands for on-demand adjustments
+- 自动定期（每日/每周/每月）对不活跃玩家账户征税
+- 根据余额等级和活跃度自定义扣除率
+- 手动征税命令，可按需调整
 
-**Note**: \
-EcoBalancer is currently undergoing testing. We encourage rigorous evaluation before deployment. For bug reports or suggestions, please open an issue.
-Also, make sure you remove the old config & language files when updating.
+**注意**：\
+EcoBalancer 目前正在测试中。我们建议在部署前进行严格评估。如有bug反馈或建议，请提交 issue。
+另外，更新时请确保删除旧的配置文件和语言文件。
 
-**Prerequisite**: Vault
+**前置插件**：Vault
 
-## Commands
+## 命令
 
-- `/ecobal help`: Display help information
-- `/ecobal reload`: Reload the configuration file
-- `/checkall`: Update all offline players' balances as per configuration settings
-- `/checkplayer <player>`: Update a specific offline player's balance as per configuration settings
-- `/stats`: Show descriptive statistics
-- `/interval`: List players' balance in a specific interval
-- `/perc`: Show percentile of players' balance
-- `/checkrecords`: Show all operations
-- `/checkrecord`: Show detail of a specific operation
-- `/restore`: Restore a specific operation
+- `/ecobal help`：显示帮助信息
+- `/ecobal reload`：重新加载配置文件
+- `/checkall`：根据配置设置更新所有离线玩家的余额
+- `/checkplayer <player>`：根据配置设置更新指定离线玩家的余额
+- `/stats`：显示描述性统计
+- `/interval`：列出特定区间内玩家的余额
+- `/perc`：显示玩家余额的百分位数
+- `/checkrecords`：显示所有操作记录
+- `/checkrecord`：显示特定操作的详细信息
+- `/restore`：恢复特定操作
 
-## Configuration (config.yml)
+## 配置 (config.yml)
 
 ```yaml
-language: 'en_US' # Language en_US/zh_CN
-info-on-login: true # Show user info on login
-record-retention-days: 30 # Record retention days
-check-time: "20:00" # Time format is HH:mm
+language: 'en_US' # 语言 en_US/zh_CN
+info-on-login: true # 登录时显示用户信息
+record-retention-days: 30 # 记录保留天数
+check-time: "20:00" # 时间格式为 HH:mm
 check-schedule:
- type: 'weekly' # Options: 'daily', 'weekly', 'monthly'
- days-of-week: [2, 4, 6] # Monday, Wednesday, Friday (7 = Saturday, 1 = Sunday)
- dates-of-month: [1] # 1st day of each month
+ type: 'weekly' # 选项：'daily'（每日）, 'weekly'（每周）, 'monthly'（每月）
+ days-of-week: [2, 4, 6] # 周一、周三、周五（7 = 周六，1 = 周日）
+ dates-of-month: [1] # 每月1号
 deduct-based-on-time: true
-# The following two options only take effect when deduct-based-on-time is true
-inactive-days-to-deduct: 50 # Days inactive before starting deductions
-inactive-days-to-clear: 500 # Days inactive before clearing balance
-# Tax brackets for deductions
+# 以下两个选项仅在 deduct-based-on-time 为 true 时生效
+inactive-days-to-deduct: 50 # 开始扣除前的不活跃天数
+inactive-days-to-clear: 500 # 清除余额前的不活跃天数
+# 扣除的税收等级
 tax-brackets:
  - threshold: 100000
-   rate: 0.001 # Tax rate
+   rate: 0.001 # 税率
  - threshold: 1000000
-   rate: 0.01 # Tax rate
- - threshold: null # No limit
-   rate: 0.02 # Tax rate
-tax-account: true # Whether to use tax account
-tax-account-name: 'tax' # Tax account name
+   rate: 0.01 # 税率
+ - threshold: null # 无限制
+   rate: 0.02 # 税率
+tax-account: true # 是否使用税收账户
+tax-account-name: 'tax' # 税收账户名称
+```
 
 [![Forkers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/forks/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/network/members)
-[![Stargazers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/stars/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/stargazers)
+[![Stargazers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/stars/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/stargazers) 

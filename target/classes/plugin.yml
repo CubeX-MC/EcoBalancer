@@ -11,42 +11,52 @@ commands:
   checkall:
     description: Clean or deduct all inactive players.
     usage: /checkall
+    aliases: [ca]
     permission: ecobalancer.command.checkall
   checkplayer:
     description: Clean or deduct a specific inactive player.
     usage: /checkplayer
+    aliases: [cp]
     permission: ecobalancer.command.checkplayer
   ecobal:
     description: Utility command for EcoBalancer.
     usage: /ecobal <command>
+    aliases: [eb]
     permission: ecobalancer.command.ecobal
   stats:
     description: Show descriptive statistics.
     usage: /stats <number of bars> [low] [up]
+    aliases: [st]
     permission: ecobalancer.command.stats
   interval:
     description: List players' balance in a specific interval.
     usage: /interval [alphabet|balance] [low] [up] [page]
+    aliases: [int]
     permission: ecobalancer.command.interval
   perc:
     description: Show percentile of players' balance.
     usage: /perc <balance> [low] [up]
+    aliases: [pc]
     permission: ecobalancer.command.perc
   reload:
     description: Reload the configuration file.
     usage: /ecobal reload
+    aliases: [rl]
     permission: ecobalancer.command.reload
   checkrecords:
     description: Show all operations.
     usage: /checkrecords [page]
+    aliases: [cr]
     permission: ecobalancer.command.checkrecords
   checkrecord:
     description: Show detail of a specific operation.
     usage: /checkrecord <operation_id> [deduction|alphabet] [page]
+    aliases: [cd]
     permission: ecobalancer.command.checkrecord
   restore:
     description: Restore a specific operation.
     usage: /restore <operation_id>
+    aliases: [rs]
     permission: ecobalancer.command.restore
 permissions:
   ecobalancer.command.checkall:
@@ -79,3 +89,17 @@ permissions:
   ecobalancer.command.restore:
     description: Allows use of /restore command
     default: op
+  ecobalancer.*:
+    description: Grants all EcoBalancer permissions
+    default: op
+    children:
+      ecobalancer.command.checkall: true
+      ecobalancer.command.checkplayer: true
+      ecobalancer.command.ecobal: true
+      ecobalancer.command.stats: true
+      ecobalancer.command.interval: true
+      ecobalancer.command.perc: true
+      ecobalancer.command.reload: true
+      ecobalancer.command.checkrecords: true
+      ecobalancer.command.checkrecord: true
+      ecobalancer.command.restore: true
