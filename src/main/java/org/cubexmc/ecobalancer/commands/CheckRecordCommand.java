@@ -12,6 +12,13 @@ import java.io.File;
 import java.sql.*;
 import java.util.*;
 
+/*
+ * 查看指定操作记录
+ * /checkrecord <operation_id> [sort_by] [page]
+ * operation_id: 操作ID
+ * sort_by: 排序方式，可选值为alphabet（按玩家名称排序）或deduction（按扣除金额排序）
+ * page: 页码，可选值为数字
+ */
 public class CheckRecordCommand implements TabExecutor {
     private final EcoBalancer plugin;
 
@@ -21,11 +28,13 @@ public class CheckRecordCommand implements TabExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        // 检查参数数量
         if (args.length < 1 || args.length > 3) {
             sender.sendMessage(plugin.getFormattedMessage("messages.record_usage", null));
             return true;
         }
 
+        // 获取要指定的操作ID
         int operationId;
         try {
             operationId = Integer.parseInt(args[0]);
@@ -35,10 +44,12 @@ public class CheckRecordCommand implements TabExecutor {
         }
 
         int page = 1;
-        String sortBy = "deduction";
+        String sortBy = "deduction"; // 默认排序方式为扣除金额
         if (args.length >= 2) {
+            // 检查排序方式
             if (args[1].equalsIgnoreCase("alphabet") || args[1].equalsIgnoreCase("deduction")) {
                 sortBy = args[1].toLowerCase();
+                // 检查是否指定了页码
                 if (args.length == 3) {
                     try {
                         page = Integer.parseInt(args[2]);
@@ -47,7 +58,7 @@ public class CheckRecordCommand implements TabExecutor {
                         return true;
                     }
                 }
-            } else {
+            } else { //checkrecord <operation_id> [page]
                 try {
                     page = Integer.parseInt(args[1]);
                 } catch (NumberFormatException e) {

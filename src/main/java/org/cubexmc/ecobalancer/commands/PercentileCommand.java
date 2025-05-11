@@ -4,8 +4,11 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.cubexmc.ecobalancer.EcoBalancer;
+import org.cubexmc.ecobalancer.utils.MessageUtils;
+import org.cubexmc.ecobalancer.utils.StatisticsUtils;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class PercentileCommand implements CommandExecutor {
@@ -18,8 +21,8 @@ public class PercentileCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length < 1 || args.length > 3) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.perc_usage", null));
-            sender.sendMessage(plugin.getFormattedMessage("messages.perc_limits", null));
+            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.perc_usage", null, plugin.getMessagePrefix()));
+            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.perc_limits", null, plugin.getMessagePrefix()));
             return false;
         }
 
@@ -36,18 +39,25 @@ public class PercentileCommand implements CommandExecutor {
                 up = args[2].equals("_") ? Double.POSITIVE_INFINITY : Double.parseDouble(args[2]);
             }
         } catch (NumberFormatException e) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.perc_invalid_args", null));
+            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.perc_invalid_args", null, plugin.getMessagePrefix()));
             return false;
         }
 
-        double percentile = plugin.calculatePercentile(balance, low, up);
-        // put placeholders in a map
+        // 收集符合条件的玩家余额
+        List<Double> balances = StatisticsUtils.collectBalancesInRange(low, up);
+        
+        // 计算百分位数
+        double percentile = StatisticsUtils.calculatePercentile(balance, balances);
+        
+        // 准备消息占位符
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("balance", String.format("%.2f", balance));
         placeholders.put("percentile", String.format("%.2f", percentile));
-        placeholders.put("low", String.format("%.2f", low));
-        placeholders.put("up", String.format("%.2f", up));
-        sender.sendMessage(plugin.getFormattedMessage("messages.perc_success", placeholders));
+        placeholders.put("low", low == Double.NEGATIVE_INFINITY ? "∞" : String.format("%.2f", low));
+        placeholders.put("up", up == Double.POSITIVE_INFINITY ? "∞" : String.format("%.2f", up));
+        
+        // 发送结果消息
+        sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.perc_success", placeholders, plugin.getMessagePrefix()));
         return true;
     }
 }

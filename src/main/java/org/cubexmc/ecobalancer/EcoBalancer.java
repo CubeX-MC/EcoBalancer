@@ -229,7 +229,7 @@ public final class EcoBalancer extends JavaPlugin {
     private void loadLangFile() {
         // Load the language file based on config
         String lang = getConfig().getString("language", "en_US");
-        System.out.println("Loading language file: " + lang);
+        getLogger().info("Loading language file: " + lang);
         File langFile = new File(getDataFolder(), "lang" + File.separator + lang + ".yml");
         if (!langFile.exists()) {
             saveResource("lang" + File.separator + lang + ".yml", false);
@@ -305,7 +305,21 @@ public final class EcoBalancer extends JavaPlugin {
         return finalMessage;
     }
 
-
+    /**
+     * 获取语言配置
+     * @return 语言配置
+     */
+    public FileConfiguration getLangConfig() {
+        return langConfig;
+    }
+    
+    /**
+     * 获取消息前缀
+     * @return 消息前缀
+     */
+    public String getMessagePrefix() {
+        return messagePrefix;
+    }
 
     @Override
     public void onDisable() {
@@ -731,9 +745,7 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     private double calculateMedian(List<Double> values) {
-        System.out.println("before sort");
         Collections.sort(values);
-        System.out.println("after sort");
         int size = values.size();
         if (size == 0) {
             return 0;

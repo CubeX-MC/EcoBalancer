@@ -5,9 +5,10 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.cubexmc.ecobalancer.EcoBalancer;
+import org.cubexmc.ecobalancer.utils.MessageUtils;
 
 public class DescripStatsCommand implements CommandExecutor {
-    EcoBalancer plugin;
+    private final EcoBalancer plugin;
 
     public DescripStatsCommand(EcoBalancer plugin) {
         this.plugin = plugin;
@@ -16,8 +17,8 @@ public class DescripStatsCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String s, String[] args) {
         if (args.length < 1 || args.length > 3) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.stats_usage", null));
-            sender.sendMessage(plugin.getFormattedMessage("messages.stats_limits", null));
+            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_usage", null, plugin.getMessagePrefix()));
+            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_limits", null, plugin.getMessagePrefix()));
             return false;
         }
 
@@ -28,7 +29,7 @@ public class DescripStatsCommand implements CommandExecutor {
         try {
             numBars = Integer.parseInt(args[0]);
             if (numBars < 1) {
-                sender.sendMessage(plugin.getFormattedMessage("messages.stats_invalid_number_of_bars", null));
+                sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_invalid_number_of_bars", null, plugin.getMessagePrefix()));
                 return false;
             }
             if (args.length >= 2) {
@@ -38,7 +39,7 @@ public class DescripStatsCommand implements CommandExecutor {
                 up = args[2].equals("_") ? Double.POSITIVE_INFINITY : Double.parseDouble(args[2]);
             }
         } catch (NumberFormatException e) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.stats_invalid_args", null));
+            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_invalid_args", null, plugin.getMessagePrefix()));
             return false;
         }
 

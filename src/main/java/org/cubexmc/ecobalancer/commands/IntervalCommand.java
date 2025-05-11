@@ -7,8 +7,12 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.util.StringUtil;
 import org.cubexmc.ecobalancer.EcoBalancer;
+import org.cubexmc.ecobalancer.utils.MessageUtils;
+import org.cubexmc.ecobalancer.utils.PageUtils;
+import org.cubexmc.ecobalancer.utils.VaultUtils;
 
 import java.util.*;
 
@@ -26,6 +30,7 @@ public class IntervalCommand implements TabExecutor {
         double up = Double.POSITIVE_INFINITY;
         int page = 1;
 
+        // 解析命令参数
         if (args.length > 0) {
             if (args[0].equalsIgnoreCase("alphabet") || args[0].equalsIgnoreCase("balance")) {
                 sortBy = args[0].toLowerCase();
@@ -39,17 +44,17 @@ public class IntervalCommand implements TabExecutor {
                                     try {
                                         page = Integer.parseInt(args[3]);
                                     } catch (NumberFormatException e) {
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
+                                        sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.invalid_page", null, plugin.getMessagePrefix()));
                                         return true;
                                     }
                                 }
                             } catch (NumberFormatException e) {
-                                sender.sendMessage(plugin.getFormattedMessage("messages.interval_invalid_up", null));
+                                sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_invalid_up", null, plugin.getMessagePrefix()));
                                 return true;
                             }
                         }
                     } catch (NumberFormatException e) {
-                        sender.sendMessage(plugin.getFormattedMessage("messages.interval_invalid_low", null));
+                        sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_invalid_low", null, plugin.getMessagePrefix()));
                         return true;
                     }
                 }
@@ -63,115 +68,94 @@ public class IntervalCommand implements TabExecutor {
                                 try {
                                     page = Integer.parseInt(args[2]);
                                 } catch (NumberFormatException e) {
-                                    sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
+                                    sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.invalid_page", null, plugin.getMessagePrefix()));
                                     return true;
                                 }
                             }
                         } catch (NumberFormatException e) {
-                            sender.sendMessage(plugin.getFormattedMessage("messages.interval_invalid_up", null));
+                            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_invalid_up", null, plugin.getMessagePrefix()));
                             return true;
                         }
                     }
                 } catch (NumberFormatException e) {
-                    sender.sendMessage(plugin.getFormattedMessage("messages.interval_invalid_low", null));
+                    sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_invalid_low", null, plugin.getMessagePrefix()));
                     return true;
                 }
             }
         }
 
+        // 收集符合条件的玩家
         OfflinePlayer[] players = Bukkit.getOfflinePlayers();
         List<OfflinePlayer> matchedPlayers = new ArrayList<>();
 
-        sender.sendMessage(plugin.getFormattedMessage("messages.interval_collecting", null));
+        sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_collecting", null, plugin.getMessagePrefix()));
         for (OfflinePlayer player : players) {
-            if (plugin.getEconomy().hasAccount(player)) {
-                double balance = plugin.getEconomy().getBalance(player);
+            if (VaultUtils.hasAccount(player)) {
+                double balance = VaultUtils.getBalance(player);
                 if (balance >= low && balance <= up) {
                     matchedPlayers.add(player);
                 }
             }
         }
-        sender.sendMessage(plugin.getFormattedMessage("messages.interval_sorting", null));
+
+        // 排序玩家列表
+        sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_sorting", null, plugin.getMessagePrefix()));
         if (sortBy.equals("balance")) {
-            matchedPlayers.sort((p1, p2) -> Double.compare(plugin.getEconomy().getBalance(p2), plugin.getEconomy().getBalance(p1)));
+            matchedPlayers.sort((p1, p2) -> Double.compare(VaultUtils.getBalance(p2), VaultUtils.getBalance(p1)));
         } else {
             matchedPlayers.sort(Comparator.comparing(OfflinePlayer::getName));
         }
-        int pageSize = 10; // 每页显示10个玩家
-        int totalPages = (matchedPlayers.size() + pageSize - 1) / pageSize;
 
-        if (page < 1 || page > totalPages) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
+        // 处理分页显示
+        final int pageSize = 10; // 每页显示10个玩家
+        int totalPages = PageUtils.calculateTotalPages(matchedPlayers.size(), pageSize);
+
+        if (!PageUtils.isValidPage(page, totalPages)) {
+            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.invalid_page", null, plugin.getMessagePrefix()));
             return true;
         }
 
-        int start = (page - 1) * pageSize;
-        int end = Math.min(start + pageSize, matchedPlayers.size());
-
+        // 显示页头
         Map<String, String> headerPlaceholders = new HashMap<>();
         headerPlaceholders.put("low", String.format("%.2f", low));
         headerPlaceholders.put("up", String.format("%.2f", up));
-        sender.sendMessage(plugin.getFormattedMessage("messages.interval_header", headerPlaceholders));
+        sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_header", headerPlaceholders, plugin.getMessagePrefix()));
 
-        for (int i = start; i < end; i++) {
-            OfflinePlayer player = matchedPlayers.get(i);
-            double balance = plugin.getEconomy().getBalance(player);
-            long lastPlayed = player.getLastPlayed();
-            long currentTime = System.currentTimeMillis();
-            long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
+        // 使用PageUtils渲染玩家列表
+        final String commandFormat = "/interval " + sortBy + " " + low + " " + up + " %d";
+        final double finalLow = low;
+        final double finalUp = up;
+        
+        PageUtils.renderPagination(
+            sender,
+            matchedPlayers,
+            pageSize,
+            page,
+            (s, player, i) -> {
+                // 渲染单个玩家
+                double balance = VaultUtils.getBalance(player);
+                long lastPlayed = player.getLastPlayed();
+                long currentTime = System.currentTimeMillis();
+                long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
 
-            Map<String, String> placeholders = new HashMap<>();
-            placeholders.put("player", player.getName());
-            placeholders.put("balance", String.format("%.2f", balance));
-            placeholders.put("days_offline", String.valueOf(daysOffline));
+                Map<String, String> placeholders = new HashMap<>();
+                placeholders.put("player", player.getName());
+                placeholders.put("balance", String.format("%.2f", balance));
+                placeholders.put("days_offline", String.valueOf(daysOffline));
 
-            sender.sendMessage(plugin.getFormattedMessage("messages.interval_player", placeholders));
-        }
-
-        Map<String, String> footerPlaceholders = new HashMap<>();
-        footerPlaceholders.put("page", String.valueOf(page));
-        footerPlaceholders.put("total", String.valueOf(totalPages));
-        // add clickable next and previous page messages
-        TextComponent previouwPage = new TextComponent();
-        TextComponent nextPage = new TextComponent();
-        if (page > 1) {
-            previouwPage.setText(plugin.getFormattedMessage("messages.prev_page", null));
-            previouwPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/interval " + sortBy + " " + low + " " + up + " " + (page - 1)));
-        } else {
-            previouwPage.setText(plugin.getFormattedMessage("messages.no_prev_page", null));
-        }
-        if (page < totalPages) {
-            nextPage.setText(plugin.getFormattedMessage("messages.next_page", null));
-            nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/interval " + sortBy + " " + low + " " + up + " " + (page + 1)));
-        } else {
-            nextPage.setText(plugin.getFormattedMessage("messages.no_next_page", null));
-        }
-        footerPlaceholders.put("prev", previouwPage.toPlainText());
-        footerPlaceholders.put("next", nextPage.toPlainText());
-
-        TextComponent message = plugin.getFormattedMessage("messages.interval_page", footerPlaceholders, new String[]{"prev", "next"}, new TextComponent[]{previouwPage, nextPage});
-        sender.spigot().sendMessage(message);
-        sender.sendMessage(plugin.getFormattedMessage("messages.interval_footer", null));
+                s.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_player", placeholders, plugin.getMessagePrefix()));
+            },
+            "messages.interval_header",
+            "messages.interval_footer",
+            "messages.interval_page",
+            commandFormat,
+            plugin.getLangConfig(),
+            "messages.invalid_page",
+            plugin.getMessagePrefix(),
+            headerPlaceholders
+        );
 
         return true;
-    }
-
-    private boolean isDouble(String value) {
-        try {
-            Double.parseDouble(value);
-            return true;
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    private int parseIntOrDefault(String value, int defaultValue, CommandSender sender) {
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            sender.sendMessage(plugin.getFormattedMessage("messages.invalid_page", null));
-            return defaultValue;
-        }
     }
 
     @Override
