@@ -34,6 +34,7 @@ import java.util.zip.GZIPOutputStream;
 
 import org.cubexmc.ecobalancer.listeners.AdminLoginListener;
 import org.cubexmc.ecobalancer.metrics.Metrics;
+import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
 public final class EcoBalancer extends JavaPlugin {
     private static Economy econ = null;
@@ -95,7 +96,7 @@ public final class EcoBalancer extends JavaPlugin {
 
         long initialDelay = calculateDelayForDaily(Calendar.getInstance(), 0, 0); // 在每天的午夜12点运行
         long cleanupPeriod = 24 * 60 * 60 * 20; // 24小时(以tick为单位)
-        Bukkit.getScheduler().scheduleSyncRepeatingTask(this, this::cleanupRecords, initialDelay, cleanupPeriod);
+        SchedulerUtils.runTaskTimer(this, this::cleanupRecords, initialDelay, cleanupPeriod);
 
         // Check for an existing log file and compress it if found
         File logDir = new File(getDataFolder() + File.separator + "logs");
@@ -134,16 +135,15 @@ public final class EcoBalancer extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new AdminLoginListener(this), this);
         getCommand("ecobal").setExecutor(new UtilCommand(this));
-        getCommand("checkall").setExecutor(new CheckAllCommand(this));
-        getCommand("checkplayer").setExecutor(new CheckPlayerCommand(this));
-        getCommand("stats").setExecutor(new DescripStatsCommand(this));
-        getCommand("perc").setExecutor(new PercentileCommand(this));
-        getCommand("checkrecords").setExecutor(new CheckRecordsCommand(this));
-        getCommand("checkrecord").setExecutor(new CheckRecordCommand(this));
-        getCommand("restore").setExecutor(new RestoreCommand(this));
-        getCommand("interval").setExecutor(new IntervalCommand(this));
         displayAsciiArt();
         getLogger().info("EcoBalancer enabled!");
+        
+        // 告知用户Folia支持状态
+        if (checkFoliaSupport()) {
+            getLogger().info("Folia support is enabled!");
+        } else {
+            getLogger().info("Running on standard Bukkit/Spigot server");
+        }
     }
 
     private void displayAsciiArt() {
@@ -199,7 +199,7 @@ public final class EcoBalancer extends JavaPlugin {
 
     public void loadConfiguration() {
         // Cancel all scheduled tasks
-        Bukkit.getScheduler().cancelTasks(this);
+        SchedulerUtils.cancelAllTasks(this);
         // load language config
         loadLangFile();
         messagePrefix = langConfig.getString("prefix", "&7[&6EcoBalancer&7]&r");
@@ -550,7 +550,7 @@ public final class EcoBalancer extends JavaPlugin {
 
 
     private void scheduleCheck(long delay) {
-        Bukkit.getScheduler().scheduleSyncDelayedTask(this, () -> {
+        SchedulerUtils.runTaskLater(this, () -> {
             checkAll(null); // 运行任务
 
             // 任务完成后，计划下一个任务
@@ -599,12 +599,12 @@ public final class EcoBalancer extends JavaPlugin {
                 sendMessage(sender, "messages.players_processing", placeholders, true);
                 if (index < players.length) {
                     // Schedule next batch
-                    Bukkit.getScheduler().runTaskLaterAsynchronously(EcoBalancer.this, this, delay);
+                    SchedulerUtils.runTaskLaterAsync(EcoBalancer.this, this, delay);
                 } else {
                     // All players have been processed, notify the sender
                     // Send a message to the sender after each batch
                     calculateTotalDeduction(operationId);
-                    Bukkit.getScheduler().runTask(EcoBalancer.this, () -> {
+                    SchedulerUtils.runTask(EcoBalancer.this, () -> {
                         sendMessage(sender, "messages.all_players_processed", null, true);
                     });
                 }
@@ -612,7 +612,7 @@ public final class EcoBalancer extends JavaPlugin {
         }
 
         // Start the first batch
-        Bukkit.getScheduler().runTaskAsynchronously(this, new BatchRunnable());
+        SchedulerUtils.runTaskAsync(this, new BatchRunnable());
     }
 
     private void calculateTotalDeduction(int operationId) {
@@ -860,6 +860,18 @@ public final class EcoBalancer extends JavaPlugin {
             }
         } catch (SQLException e) {
             getLogger().severe(getFormattedMessage("messages.sql_clean_error", null) + e.getMessage());
+        }
+    }
+
+    /**
+     * 检查是否运行在Folia服务器上
+     */
+    private boolean checkFoliaSupport() {
+        try {
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
         }
     }
 }
