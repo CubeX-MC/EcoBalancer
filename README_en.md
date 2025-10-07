@@ -29,16 +29,28 @@ Also, make sure you remove the old config & language files when updating.
 
 ## Commands
 
+All commands require the `/ecobal` prefix (or alias `/eb`):
+
+### Basic Commands
 - `/ecobal help`: Display help information
 - `/ecobal reload`: Reload the configuration file
-- `/checkall`: Update all offline players' balances as per configuration settings
-- `/checkplayer <player>`: Update a specific offline player's balance as per configuration settings
-- `/stats`: Show descriptive statistics
-- `/interval`: List players' balance in a specific interval
-- `/perc`: Show percentile of players' balance
-- `/checkrecords`: Show all operations
-- `/checkrecord`: Show detail of a specific operation
-- `/restore`: Restore a specific operation
+- `/ecobal checkall`: Update all offline players' balances as per configuration settings
+- `/ecobal checkplayer <player>`: Update a specific offline player's balance as per configuration settings
+- `/ecobal stats [bars] [low] [up]`: Show descriptive statistics and wealth distribution histogram
+- `/ecobal interval <low> <up> [page]`: List players' balance in a specific interval
+- `/ecobal perc <balance> [low] [up]`: Show percentile of a specific balance among players
+
+### Economic Analysis Commands
+- `/ecobal gini [days]`: Calculate Gini Coefficient (measure wealth inequality), optional parameter to filter players active within N days
+- `/ecobal concentration [percentages...]`: Wealth concentration analysis, show percentage of wealth held by Top N% players (default: 1%, 5%, 10%, 20%)
+- `/ecobal report [operation_id]`: View tax operation report, showing total tax collected, players affected, tax bracket distribution, etc.
+
+### Record Management Commands
+- `/ecobal checkrecords [page]`: Show all operation records
+- `/ecobal checkrecord <operation_id> [sort] [page]`: Show details of a specific operation
+- `/ecobal restore <operation_id>`: Restore a specific operation
+
+**Alias**: You can use `/eb` instead of `/ecobal`, e.g., `/eb gini` is equivalent to `/ecobal gini`
 
 ## Configuration (config.yml)
 

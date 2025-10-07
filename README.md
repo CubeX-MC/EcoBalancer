@@ -29,16 +29,28 @@ EcoBalancer 目前正在测试中。我们建议在部署前进行严格评估�
 
 ## 命令
 
+所有命令需要使用 `/ecobal` 前缀（或别名 `/eb`）：
+
+### 基础命令
 - `/ecobal help`：显示帮助信息
 - `/ecobal reload`：重新加载配置文件
-- `/checkall`：根据配置设置更新所有离线玩家的余额
-- `/checkplayer <player>`：根据配置设置更新指定离线玩家的余额
-- `/stats`：显示描述性统计
-- `/interval`：列出特定区间内玩家的余额
-- `/perc`：显示玩家余额的百分位数
-- `/checkrecords`：显示所有操作记录
-- `/checkrecord`：显示特定操作的详细信息
-- `/restore`：恢复特定操作
+- `/ecobal checkall`：根据配置设置更新所有离线玩家的余额
+- `/ecobal checkplayer <player>`：根据配置设置更新指定离线玩家的余额
+- `/ecobal stats [bars] [low] [up]`：显示描述性统计和财富分布直方图
+- `/ecobal interval <low> <up> [page]`：列出特定区间内玩家的余额
+- `/ecobal perc <balance> [low] [up]`：显示指定余额在玩家中的百分位数
+
+### 经济分析命令
+- `/ecobal gini [days]`：计算基尼系数（衡量贫富差距），可选参数仅统计N天内活跃玩家
+- `/ecobal concentration [percentages...]`：财富集中度分析，显示Top N%玩家持有的财富占比（默认1%, 5%, 10%, 20%）
+- `/ecobal report [operation_id]`：查看税收操作报告，显示征税总额、影响人数、税阶分布等
+
+### 记录管理命令
+- `/ecobal checkrecords [page]`：显示所有操作记录
+- `/ecobal checkrecord <operation_id> [sort] [page]`：显示特定操作的详细信息
+- `/ecobal restore <operation_id>`：恢复特定操作
+
+**别名**：可以使用 `/eb` 代替 `/ecobal`，例如 `/eb gini` 等同于 `/ecobal gini`
 
 ## 配置 (config.yml)
 

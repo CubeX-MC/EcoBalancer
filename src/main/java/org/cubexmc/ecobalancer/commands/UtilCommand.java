@@ -1,19 +1,14 @@
 package org.cubexmc.ecobalancer.commands;
 
-import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabExecutor;
-import org.bukkit.util.StringUtil;
 import org.cubexmc.ecobalancer.EcoBalancer;
+import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Locale;
 
-public class UtilCommand implements TabExecutor {
+public class UtilCommand implements CommandExecutor {
     private final EcoBalancer plugin;
     private final CheckAllCommand checkAllCommand;
     private final CheckPlayerCommand checkPlayerCommand;
@@ -23,6 +18,9 @@ public class UtilCommand implements TabExecutor {
     private final CheckRecordCommand checkRecordCommand;
     private final RestoreCommand restoreCommand;
     private final IntervalCommand intervalCommand;
+    private final GiniCommand giniCommand;
+    private final ConcentrationCommand concentrationCommand;
+    private final TaxReportCommand reportCommand;
 
     public UtilCommand(EcoBalancer plugin) {
         this.plugin = plugin;
@@ -34,6 +32,9 @@ public class UtilCommand implements TabExecutor {
         this.checkRecordCommand = new CheckRecordCommand(plugin);
         this.restoreCommand = new RestoreCommand(plugin);
         this.intervalCommand = new IntervalCommand(plugin);
+        this.giniCommand = new GiniCommand(plugin);
+        this.concentrationCommand = new ConcentrationCommand(plugin);
+        this.reportCommand = new TaxReportCommand(plugin);
     }
 
     @Override
@@ -49,7 +50,7 @@ public class UtilCommand implements TabExecutor {
 
         switch (subCommand) {
             case "reload":
-                Bukkit.getScheduler().cancelTasks(plugin);
+                SchedulerUtils.cancelAllTasks(plugin);
                 plugin.reloadConfig();
                 plugin.loadConfiguration();
                 sender.sendMessage(plugin.getFormattedMessage("messages.reload_success", null));
@@ -72,10 +73,13 @@ public class UtilCommand implements TabExecutor {
             case "restore":
                 return restoreCommand.onCommand(sender, command, label, subArgs);
             case "interval":
-                if (intervalCommand instanceof TabExecutor) {
-                    return ((TabExecutor) intervalCommand).onCommand(sender, command, label, subArgs);
-                }
-                return false;
+                return intervalCommand.onCommand(sender, command, label, subArgs);
+            case "gini":
+                return giniCommand.onCommand(sender, command, label, subArgs);
+            case "concentration":
+                return concentrationCommand.onCommand(sender, command, label, subArgs);
+            case "report":
+                return reportCommand.onCommand(sender, command, label, subArgs);
             default:
                 sender.sendMessage(plugin.getFormattedMessage("messages.unknown_command", null));
                 return false;
@@ -88,6 +92,9 @@ public class UtilCommand implements TabExecutor {
                 plugin.getFormattedMessage("messages.commands.help", null),
                 plugin.getFormattedMessage("messages.commands.checkall", null),
                 plugin.getFormattedMessage("messages.commands.checkplayer", null),
+                plugin.getFormattedMessage("messages.commands.gini", null),
+                plugin.getFormattedMessage("messages.commands.concentration", null),
+                plugin.getFormattedMessage("messages.commands.report", null),
                 plugin.getFormattedMessage("messages.commands.checkrecords", null),
                 plugin.getFormattedMessage("messages.commands.checkrecord", null),
                 plugin.getFormattedMessage("messages.commands.restore", null),
@@ -100,73 +107,7 @@ public class UtilCommand implements TabExecutor {
         for (String str : commandMessages) sender.sendMessage(str);
     }
 
-    @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        List<String> completions = new ArrayList<>();
-        
-        if (args.length == 1) {
-            // 所有可用的子命令
-            String[] subCommands = {"help", "reload", "checkall", "checkplayer", "stats", 
-                                   "perc", "checkrecords", "checkrecord", "restore", "interval"};
-            StringUtil.copyPartialMatches(args[0], Arrays.asList(subCommands), completions);
-        } else if (args.length > 1) {
-            // 处理子命令的参数补全
-            String subCommand = args[0].toLowerCase();
-            String[] subArgs = Arrays.copyOfRange(args, 1, args.length);
-            
-            switch (subCommand) {
-                case "interval":
-                    if (intervalCommand instanceof TabExecutor) {
-                        return ((TabExecutor) intervalCommand).onTabComplete(sender, command, alias, subArgs);
-                    }
-                    break;
-                case "checkplayer":
-                    // 补全在线玩家名称
-                    if (subArgs.length == 1) {
-                        List<String> playerNames = new ArrayList<>();
-                        Bukkit.getOnlinePlayers().forEach(player -> playerNames.add(player.getName()));
-                        StringUtil.copyPartialMatches(subArgs[0], playerNames, completions);
-                    }
-                    break;
-                case "stats":
-                    // stats <number of bars> [low] [up]
-                    if (subArgs.length == 1) {
-                        // 提供一些常用的柱状图条数选项
-                        List<String> barOptions = Arrays.asList("5", "10", "15", "20", "25", "30");
-                        StringUtil.copyPartialMatches(subArgs[0], barOptions, completions);
-                    }
-                    break;
-                case "checkrecord":
-                    // checkrecord <operation_id> [deduction|alphabet] [page]
-                    if (subArgs.length == 2) {
-                        // 提供排序选项
-                        List<String> sortOptions = Arrays.asList("deduction", "alphabet");
-                        StringUtil.copyPartialMatches(subArgs[1], sortOptions, completions);
-                    }
-                    break;
-                case "perc":
-                    // 无特定参数补全，使用数字输入
-                    break;
-                case "checkrecords":
-                    // checkrecords [page]
-                    // 页码通常是数字，无需特定补全
-                    break;
-                case "restore":
-                    // restore <operation_id>
-                    // 操作ID通常是数字，无需特定补全
-                    break;
-                case "checkall":
-                    // 无参数命令，不需要补全
-                    break;
-                case "help":
-                    // 无参数命令，不需要补全
-                    break;
-                case "reload":
-                    // 无参数命令，不需要补全
-                    break;
-            }
-        }
-        
-        return completions;
-    }
+    // Expose subcommands for completer routing
+    public IntervalCommand getIntervalCommand() { return intervalCommand; }
+    public CheckRecordCommand getCheckRecordCommand() { return checkRecordCommand; }
 }

@@ -6,7 +6,14 @@ description: This plugin deducts money from inactive players' accounts using Vau
 author: angushushu
 website: angushushu.com
 depend: [Vault]
-softdepend: [Essentials]
+softdepend:
+  - Essentials
+  - CMI
+  - CMIEconomy
+  - XConomy
+  - TheNewEconomy
+  - iConomy
+  - Gringotts
 folia-supported: true
 commands:
   ecobal:

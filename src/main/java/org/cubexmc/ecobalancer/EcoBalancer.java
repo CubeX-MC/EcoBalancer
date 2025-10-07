@@ -1,9 +1,7 @@
 package org.cubexmc.ecobalancer;
 
 import net.md_5.bungee.api.chat.*;
-import net.milkbowl.vault.chat.Chat;
 import net.milkbowl.vault.economy.Economy;
-import net.milkbowl.vault.permission.Permission;
 import org.apache.commons.lang.StringUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -17,7 +15,6 @@ import org.cubexmc.ecobalancer.commands.*;
 
 import java.io.FileOutputStream;
 import java.nio.file.Files;
-import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -35,10 +32,11 @@ import java.util.zip.GZIPOutputStream;
 import org.cubexmc.ecobalancer.listeners.AdminLoginListener;
 import org.cubexmc.ecobalancer.metrics.Metrics;
 import org.cubexmc.ecobalancer.utils.SchedulerUtils;
+import org.cubexmc.ecobalancer.utils.DatabaseUtils;
 
+@SuppressWarnings("deprecation")
 public final class EcoBalancer extends JavaPlugin {
     private static Economy econ = null;
-    private static Chat chat = null;
     private boolean deductBasedOnTime;
     private int inactiveDaysToDeduct;
     private TreeMap<Integer, Double> taxBrackets = new TreeMap<>();
@@ -54,6 +52,49 @@ public final class EcoBalancer extends JavaPlugin {
     private boolean taxAccount;
     private String taxAccountName;
     private String messagePrefix;
+
+    private void initFileLogger(boolean rotateExisting) {
+        // Create logs dir
+        File logDir = new File(getDataFolder() + File.separator + "logs");
+        if (!logDir.exists()) {
+            logDir.mkdirs();
+        }
+        // Rotate previous log only on full startup to avoid churn on reload
+        if (rotateExisting) {
+            File lockFile = new File(getDataFolder() + File.separator + "logs" + File.separator + "latest.log.lck");
+            if (lockFile.exists()) {
+                lockFile.delete();
+            }
+            File existingLogFile = new File(getDataFolder() + File.separator + "logs" + File.separator + "latest.log");
+            if (existingLogFile.exists()) {
+                compressExistingLogFile(existingLogFile);
+            }
+        }
+        try {
+            fileHandler = new FileHandler(getDataFolder() + File.separator + "logs" + File.separator + "latest.log", true);
+            fileHandler.setFormatter(new SimpleFormatter());
+            fileLogger.addHandler(fileHandler);
+            fileLogger.setUseParentHandlers(false);
+        } catch (IOException e) {
+            getLogger().severe("Could not create the log file handler for EcoBalancer.");
+            e.printStackTrace();
+        }
+    }
+
+    private void updateFileLoggerFromConfig() {
+        boolean enable = getConfig().getBoolean("file-logging", true);
+        if (enable) {
+            if (fileHandler == null) {
+                initFileLogger(false);
+            }
+        } else {
+            if (fileHandler != null) {
+                try { fileLogger.removeHandler(fileHandler); } catch (Throwable ignored) {}
+                try { fileHandler.close(); } catch (Throwable ignored) {}
+                fileHandler = null;
+            }
+        }
+    }
 
     @Override
     public void onEnable() {
@@ -79,47 +120,16 @@ public final class EcoBalancer extends JavaPlugin {
             }
         }
 
-        // 建立数据库连接
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
-            // 检查 'operations' 表是否存在,如果不存在则创建它
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, is_restored BOOLEAN NOT NULL)");
-            }
-
-            // 检查 'records' 表是否存在,如果不存在则创建它
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player_name TEXT NOT NULL, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
-            }
-        } catch (SQLException e) {
-            getLogger().severe("检查或创建数据库表时出错: " + e.getMessage());
-        }
+        // 初始化数据库（建表、索引、PRAGMA）
+        DatabaseUtils.initializeTables(this, getLogger());
 
         long initialDelay = calculateDelayForDaily(Calendar.getInstance(), 0, 0); // 在每天的午夜12点运行
         long cleanupPeriod = 24 * 60 * 60 * 20; // 24小时(以tick为单位)
         SchedulerUtils.runTaskTimer(this, this::cleanupRecords, initialDelay, cleanupPeriod);
 
-        // Check for an existing log file and compress it if found
-        File logDir = new File(getDataFolder() + File.separator + "logs");
-        if (!logDir.exists()) {
-            logDir.mkdirs(); // This will create the directory if it does not exist
-        }
-        File lockFile = new File(getDataFolder() + File.separator + "logs" + File.separator + "latest.log.lck");
-        if (lockFile.exists()) {
-            lockFile.delete(); // This will delete the lock file if it exists
-        }
-        File existingLogFile = new File(getDataFolder() + File.separator + "logs" + File.separator + "latest.log");
-        if (existingLogFile.exists()) {
-            compressExistingLogFile(existingLogFile);
-        }
-
-        try {
-            fileHandler = new FileHandler(getDataFolder() + File.separator + "logs" + File.separator + "latest.log", true);
-            fileHandler.setFormatter(new SimpleFormatter());
-            fileLogger.addHandler(fileHandler);
-            fileLogger.setUseParentHandlers(false);
-        } catch (IOException e) {
-            getLogger().severe("Could not create the log file handler for EcoBalancer.");
-            e.printStackTrace();
+        // Optional file logger based on config
+        if (getConfig().getBoolean("file-logging", true)) {
+            initFileLogger(true);
         }
 
         // metrics
@@ -134,7 +144,14 @@ public final class EcoBalancer extends JavaPlugin {
         }
 
         getServer().getPluginManager().registerEvents(new AdminLoginListener(this), this);
-        getCommand("ecobal").setExecutor(new UtilCommand(this));
+        // Register executor and decoupled tab completer
+        UtilCommand util = new UtilCommand(this);
+        if (getCommand("ecobal") != null) {
+            getCommand("ecobal").setExecutor(util);
+            getCommand("ecobal").setTabCompleter(new org.cubexmc.ecobalancer.commands.EcoTabCompleter(this, util));
+        } else {
+            getLogger().severe("Command 'ecobal' not found in plugin.yml. Tab completer not registered.") ;
+        }
         displayAsciiArt();
         getLogger().info("EcoBalancer enabled!");
         
@@ -163,8 +180,7 @@ public final class EcoBalancer extends JavaPlugin {
         // ANSI 转义序列for colors
         final String ANSI_RESET = "\u001B[0m";
         final String ANSI_YELLOW = "\u001B[33m";
-        final String ANSI_GREEN = "\u001B[32m";
-        final String ANSI_CYAN = "\u001B[36m";
+    // Colors available if needed in future
         final String ANSI_RED = "\u001B[31m";
         final String ANSI_WHITE = "\u001B[37m";
 
@@ -203,6 +219,8 @@ public final class EcoBalancer extends JavaPlugin {
         // load language config
         loadLangFile();
         messagePrefix = langConfig.getString("prefix", "&7[&6EcoBalancer&7]&r");
+        // Update file logger state on reload
+        updateFileLoggerFromConfig();
         recordRetentionDays = getConfig().getInt("record-retention-days", 30);
         // Load the new scheduling configuration
         scheduleType = getConfig().getString("check-schedule.type", "daily");
@@ -219,10 +237,64 @@ public final class EcoBalancer extends JavaPlugin {
         taxAccount = getConfig().getBoolean("tax-account", false);
         taxAccountName = taxAccount ? getConfig().getString("tax-account-name", "tax") : null;
 
-        for (Map<?, ?> bracket : rawTaxBrackets) {
-            Integer threshold = bracket.get("threshold") == null ? Integer.MAX_VALUE : (Integer) bracket.get("threshold");
-            Double rate = ((Number) bracket.get("rate")).doubleValue();
-            taxBrackets.put(threshold, rate);
+        // Rebuild tax brackets from config (supports absolute or percentile-based thresholds)
+        taxBrackets.clear();
+        boolean usePercentileThresholds = getConfig().getBoolean("percentile-thresholds", false);
+        if (!usePercentileThresholds) {
+            // Standard: thresholds are absolute balances
+            for (Map<?, ?> bracket : rawTaxBrackets) {
+                Object thObj = bracket.get("threshold");
+                int threshold = (thObj == null) ? Integer.MAX_VALUE : ((Number) thObj).intValue();
+                Double rate = ((Number) bracket.get("rate")).doubleValue();
+                taxBrackets.put(threshold, rate);
+            }
+        } else {
+            // Percentile mode: thresholds represent 0-100 percentiles of current balance distribution
+            List<Double> balances = collectAllBalances();
+            if (balances.isEmpty()) {
+                getLogger().warning("percentile-thresholds enabled but no balances found; falling back to absolute thresholds.");
+                for (Map<?, ?> bracket : rawTaxBrackets) {
+                    Object thObj = bracket.get("threshold");
+                    int threshold = (thObj == null) ? Integer.MAX_VALUE : ((Number) thObj).intValue();
+                    Double rate = ((Number) bracket.get("rate")).doubleValue();
+                    taxBrackets.put(threshold, rate);
+                }
+            } else {
+                // Sort once for percentile computation
+                Collections.sort(balances);
+                for (Map<?, ?> bracket : rawTaxBrackets) {
+                    Object thObj = bracket.get("threshold");
+                    int thresholdAbs;
+                    if (thObj == null) {
+                        thresholdAbs = Integer.MAX_VALUE;
+                    } else {
+                        double p = ((Number) thObj).doubleValue();
+                        // Clamp percentile to [0,100]
+                        if (p < 0) p = 0; if (p > 100) p = 100;
+                        double value = getPercentileValue(balances, p);
+                        // Use ceil as an exclusive upper bound in int domain
+                        if (value >= Integer.MAX_VALUE) {
+                            thresholdAbs = Integer.MAX_VALUE;
+                        } else if (value <= Integer.MIN_VALUE) {
+                            thresholdAbs = Integer.MIN_VALUE + 1; // keep ordering sane
+                        } else {
+                            thresholdAbs = (int) Math.ceil(value);
+                        }
+                    }
+                    Double rate = ((Number) bracket.get("rate")).doubleValue();
+                    taxBrackets.put(thresholdAbs, rate);
+                }
+
+                // Log computed absolute thresholds for visibility
+                try {
+                    StringBuilder sb = new StringBuilder("Computed absolute thresholds from percentiles: ");
+                    for (Map.Entry<Integer, Double> e : taxBrackets.entrySet()) {
+                        sb.append("[").append(e.getKey() == Integer.MAX_VALUE ? "MAX" : e.getKey()).append(": ")
+                          .append(e.getValue()).append("] ");
+                    }
+                    getLogger().info(sb.toString());
+                } catch (Throwable ignored) {}
+            }
         }
     }
 
@@ -448,7 +520,9 @@ public final class EcoBalancer extends JavaPlugin {
     private void sendMessage(CommandSender sender, String path, Map<String, String> placeholders, boolean isLog) {
         String message = getFormattedMessage(path, placeholders);
         if (sender != null) for (String str : message.split("\n")) sender.sendMessage(str);
-        if (isLog) for (String str : message.split("\n")) fileLogger.info(str);
+        if (isLog && getConfig().getBoolean("file-logging", true) && fileHandler != null) {
+            for (String str : message.split("\n")) fileLogger.info(str);
+        }
     }
 
     private long calculateNextDelay() {
@@ -616,60 +690,12 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     private void calculateTotalDeduction(int operationId) {
-        // 获取数据库文件路径
-        File dataFolder = getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
-        // 建立数据库连接
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
-            // 查询该操作ID的所有记录,并计算扣除金额的总和
-            try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT SUM(deduction) AS total_deduction FROM records WHERE operation_id = ?")) {
-                preparedStatement.setInt(1, operationId);
-                try (ResultSet resultSet = preparedStatement.executeQuery()) {
-                    if (resultSet.next()) {
-                        double totalDeduction = resultSet.getDouble("total_deduction");
-                        // 在这里,你可以选择将总扣除金额记录到数据库的另一个表中,或者简单地记录到日志文件中
-                        getLogger().info("Operation " + operationId + " total deduction: " + totalDeduction);
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            getLogger().severe("无法计算总扣除金额: " + e.getMessage());
-        }
+        double totalDeduction = DatabaseUtils.calculateTotalDeduction(this, operationId, getLogger());
+        getLogger().info("Operation " + operationId + " total deduction: " + totalDeduction);
     }
 
     private int getNextOperationId(boolean isCheckAll) {
-        // 获取数据库文件路径
-        File dataFolder = getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
-        // 建立数据库连接
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
-            // 如果表不存在,则创建表
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, is_restored BOOLEAN NOT NULL DEFAULT 0)");
-            }
-
-            // 插入一个新的操作记录
-            try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO operations (timestamp, is_checkall, is_restored) VALUES (?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
-                preparedStatement.setLong(1, System.currentTimeMillis());
-                preparedStatement.setBoolean(2, isCheckAll);
-                preparedStatement.setBoolean(3, false);
-                preparedStatement.executeUpdate();
-
-                // 获取新插入的操作的ID
-                try (ResultSet generatedKeys = preparedStatement.getGeneratedKeys()) {
-                    if (generatedKeys.next()) {
-                        return generatedKeys.getInt(1);
-                    } else {
-                        throw new SQLException("Creating operation failed, no ID obtained.");
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            getLogger().severe("无法获取下一个操作ID: " + e.getMessage());
-            return -1;  // 返回一个无效的操作ID表示出错
-        }
+        return DatabaseUtils.getNextOperationId(this, isCheckAll, getLogger());
     }
 
     public void generateHistogram(CommandSender sender, int numBars, double low, double up) {
@@ -799,68 +825,12 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     private void saveRecord(OfflinePlayer player, double oldBalance, double newBalance, double deduction, boolean isCheckAll, int operationId) {
-        // 获取数据库文件路径
-        File dataFolder = getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
-        // 建立数据库连接
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
-            // 如果表不存在,则创建表
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player_name TEXT NOT NULL, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
-            }
-
-            // 插入记录
-            try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO records (operation_id, player_name, player, old_balance, new_balance, deduction, timestamp, is_checkall) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
-                preparedStatement.setInt(1, operationId);
-                preparedStatement.setString(2, player.getName());
-                preparedStatement.setString(3, player.getUniqueId().toString());
-                preparedStatement.setDouble(4, oldBalance);
-                preparedStatement.setDouble(5, newBalance);
-                preparedStatement.setDouble(6, deduction);
-                preparedStatement.setLong(7, System.currentTimeMillis());
-                preparedStatement.setBoolean(8, isCheckAll);
-                preparedStatement.executeUpdate();
-            }
-        } catch (SQLException e) {
-            getLogger().severe(getFormattedMessage("messages.sql_save_error", null) + e.getMessage());
-        }
+        // 在异步线程写库，避免阻塞主线程
+        SchedulerUtils.runTaskAsync(this, () -> DatabaseUtils.saveRecord(this, player, oldBalance, newBalance, deduction, isCheckAll, operationId, getLogger()));
     }
 
     private void cleanupRecords() {
-        // 计算过期时间
-        long expirationTime = System.currentTimeMillis() - recordRetentionDays * 24 * 60 * 60 * 1000;
-
-        // 获取数据库文件路径
-        File dataFolder = getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
-        // 建立数据库连接
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
-            // 首先,我们需要找到所有过期的操作ID
-            try (PreparedStatement selectExpiredOperations = connection.prepareStatement("SELECT id FROM operations WHERE timestamp < ?")) {
-                selectExpiredOperations.setLong(1, expirationTime);
-                try (ResultSet expiredOperations = selectExpiredOperations.executeQuery()) {
-                    while (expiredOperations.next()) {
-                        int operationId = expiredOperations.getInt("id");
-
-                        // 删除records表中所有与该操作ID相关的记录
-                        try (PreparedStatement deleteRecords = connection.prepareStatement("DELETE FROM records WHERE operation_id = ?")) {
-                            deleteRecords.setInt(1, operationId);
-                            deleteRecords.executeUpdate();
-                        }
-
-                        // 删除operations表中的该操作记录
-                        try (PreparedStatement deleteOperation = connection.prepareStatement("DELETE FROM operations WHERE id = ?")) {
-                            deleteOperation.setInt(1, operationId);
-                            deleteOperation.executeUpdate();
-                        }
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            getLogger().severe(getFormattedMessage("messages.sql_clean_error", null) + e.getMessage());
-        }
+        DatabaseUtils.cleanupRecords(this, recordRetentionDays, getLogger());
     }
 
     /**
@@ -873,5 +843,36 @@ public final class EcoBalancer extends JavaPlugin {
         } catch (ClassNotFoundException e) {
             return false;
         }
+    }
+
+    // Collect all player balances (offline + online) via Vault
+    private List<Double> collectAllBalances() {
+        List<Double> balances = new ArrayList<>();
+        try {
+            OfflinePlayer[] players = Bukkit.getOfflinePlayers();
+            for (OfflinePlayer player : players) {
+                try {
+                    if (econ != null && econ.hasAccount(player)) {
+                        double bal = econ.getBalance(player);
+                        balances.add(bal);
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return balances;
+    }
+
+    // Nearest-rank percentile (0-100) -> value in sorted list
+    private double getPercentileValue(List<Double> sortedValues, double percentile) {
+        if (sortedValues == null || sortedValues.isEmpty()) return 0.0;
+        if (percentile <= 0) return sortedValues.get(0);
+        if (percentile >= 100) return sortedValues.get(sortedValues.size() - 1);
+        int n = sortedValues.size();
+        // nearest-rank: rank = ceil(p/100 * n), 1-indexed
+        int rank = (int) Math.ceil((percentile / 100.0) * n);
+        rank = Math.max(1, Math.min(rank, n));
+        return sortedValues.get(rank - 1);
     }
 }

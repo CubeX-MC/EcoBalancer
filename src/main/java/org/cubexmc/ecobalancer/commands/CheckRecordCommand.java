@@ -8,9 +8,9 @@ import org.bukkit.command.TabExecutor;
 import org.bukkit.util.StringUtil;
 import org.cubexmc.ecobalancer.EcoBalancer;
 
-import java.io.File;
 import java.sql.*;
 import java.util.*;
+import org.cubexmc.ecobalancer.utils.DatabaseUtils;
 
 /*
  * 查看指定操作记录
@@ -68,18 +68,14 @@ public class CheckRecordCommand implements TabExecutor {
             }
         }
 
-        // 获取数据库文件路径
-        File dataFolder = plugin.getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
-
-        // 从数据库中查询对应的操作
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+    // 从数据库中查询对应的操作
+    try (Connection connection = DatabaseUtils.getConnection(plugin)) {
             try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM operations WHERE id = ?")) {
                 preparedStatement.setInt(1, operationId);
                 try (ResultSet resultSet = preparedStatement.executeQuery()) {
                     if (resultSet.next()) {
                         boolean isCheckAll = resultSet.getBoolean("is_checkall");
-                        long timestamp = resultSet.getLong("timestamp");
+                        // read timestamp if needed: long timestamp = resultSet.getLong("timestamp");
 
                         if (isCheckAll) {
                             Map<String, String> placeholders = new HashMap<>();
@@ -95,7 +91,7 @@ public class CheckRecordCommand implements TabExecutor {
                                 selectStatement.setInt(3, offset);
 
                                 try (ResultSet allRecords = selectStatement.executeQuery()) {
-                                    int count = 0;
+                                    // rows will be iterated and printed; no need to count separately
                                     while (allRecords.next()) {
                                         String playerName = allRecords.getString("player_name");
                                         double oldBalance = allRecords.getDouble("old_balance");
@@ -110,7 +106,6 @@ public class CheckRecordCommand implements TabExecutor {
 
                                         String message = plugin.getFormattedMessage("messages.record_all_detail", detailPlaceholders);
                                         sender.sendMessage(message);
-                                        count++;
                                     }
                                 }
                             }

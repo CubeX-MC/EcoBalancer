@@ -7,6 +7,9 @@ messages:
     help: '&f/ecobal help &6- Help'
     checkall: '&f/checkall &6- Check and clean all player balances'
     checkplayer: '&f/checkplayer <player> &6- Check and clean a single player balance'
+    gini: '&f/ecobal gini [days] &6- Calculate Gini Coefficient'
+    concentration: '&f/ecobal concentration [%...] &6- Wealth concentration analysis'
+    report: '&f/ecobal report [operation_id] &6- Tax report'
     checkrecords: '&f/checkrecords [page] &6- View tax operation records'
     checkrecord: '&f/checkrecord <operation_id> [alphabet|deduction] [page] &6- View player balance change records'
     restore: '&f/restore <operation_id> &6- Restore operation'
@@ -93,6 +96,41 @@ messages:
   # taxaccount
   tax_account_enabled: "%prefix\n&6Tax account is &aenabled.\n&6Tax account name is &6%tax_account_name%&6.\n&6Tax account balance is &6%tax_account_balance%&6."
   tax_account_disabled: "&6Tax account is &cdisabled."
+  # gini
+  gini:
+    calculating: "&7Calculating Gini Coefficient..."
+    invalid_days: "&cDays must be greater than 0!"
+    invalid_number: "&cInvalid number: %input%"
+    no_data: "&cNo data available!"
+    header: "&e&l━━━━━━━ Gini Coefficient Analysis ━━━━━━━"
+    result: "&6Gini Coefficient: &e%gini% &7(%gini_percentage%)\n&6Level: &e%level%\n&6Scope: &f%days% &7days active players\n&6Sample Size: &f%player_count% &7players\n&6Total Money: &f%total_money%"
+    warning_high: "&cWarning: Severe wealth inequality! Consider adjusting tax rates or subsidies."
+    warning_moderate: "&eNotice: High wealth inequality, consider optimizing economic policies."
+    info_low: "&aEconomy is healthy, wealth distribution is relatively equal."
+    error: "&cError calculating Gini Coefficient!"
+  # concentration
+  concentration:
+    calculating: "&7Calculating wealth concentration..."
+    invalid_percentage: "&cPercentage must be between 0-100: %value%"
+    invalid_number: "&cInvalid number: %input%"
+    no_data: "&cNo data available!"
+    header: "&e&l━━━━━━━ Wealth Concentration Analysis ━━━━━━━\n&7Total Players: &f%total_players% &7| Total Money: &f%total_money%"
+    result_line: "&6Top %percentage% players: &e%concentration% &7wealth &f(%player_count% players) &7- %level%"
+    warning_extreme: "&cSevere Warning: Extreme wealth concentration! Economic imbalance is critical!"
+    warning_high: "&eAttention: High wealth concentration, regulatory measures recommended."
+    error: "&cError calculating wealth concentration!"
+  # report
+  report:
+    loading: "&7Loading tax report..."
+    invalid_id: "&cInvalid operation ID: %id%"
+    invalid_number: "&cInvalid number: %input%"
+    no_operations: "&cNo operation records found!"
+    not_found: "&cOperation #%operation_id% not found!"
+    header: "&e&l━━━━━━━ Tax Report #%operation_id% ━━━━━━━\n&7Type: &f%operation_type% &7| Time: &f%timestamp%"
+    summary: "&6Total Tax Collected: &e%total_tax%\n&6Players Affected: &f%player_count% &7players\n&6Average Tax Rate: &e%avg_tax_rate%\n&6Avg Balance Before: &f%avg_old_balance%\n&6Avg Balance After: &f%avg_new_balance%"
+    brackets_header: "&eTax Bracket Distribution:"
+    bracket_line: "&7• &f%tax_rate% &7rate: &6%player_count% &7players | Total: &e%total_tax% &7(%percentage%)"
+    error: "&cError generating tax report!"
   # sql
   sql_save_error: "&cUnable to save record:"
   sql_clean_error: "&cAn error occurred while cleaning player balances:"

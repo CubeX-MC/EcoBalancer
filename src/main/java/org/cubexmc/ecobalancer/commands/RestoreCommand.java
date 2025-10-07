@@ -7,11 +7,11 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.cubexmc.ecobalancer.EcoBalancer;
 
-import java.io.File;
 import java.sql.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.cubexmc.ecobalancer.utils.DatabaseUtils;
 
 public class RestoreCommand implements CommandExecutor {
     private final EcoBalancer plugin;
@@ -35,12 +35,10 @@ public class RestoreCommand implements CommandExecutor {
             return true;
         }
 
-        // 获取数据库文件路径
-        File dataFolder = plugin.getDataFolder();
-        File databaseFile = new File(dataFolder, "records.db");
+    // 连接由 DatabaseUtils 统一管理
 
-        // 从数据库中查询对应的操作
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath())) {
+    // 从数据库中查询对应的操作
+    try (Connection connection = DatabaseUtils.getConnection(plugin)) {
             try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM operations WHERE id = ?")) {
                 preparedStatement.setInt(1, operationId);
                 try (ResultSet resultSet = preparedStatement.executeQuery()) {
@@ -60,7 +58,7 @@ public class RestoreCommand implements CommandExecutor {
                                         String playerUUID = allRecords.getString("player");
                                         double deduction = allRecords.getDouble("deduction");
                                         OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(playerUUID));
-                                        plugin.getEconomy().depositPlayer(offlinePlayer, deduction);
+                                        EcoBalancer.getEconomy().depositPlayer(offlinePlayer, deduction);
                                     }
                                 }
                             }
@@ -74,7 +72,7 @@ public class RestoreCommand implements CommandExecutor {
                                         String playerUUID = record.getString("player");
                                         double deduction = record.getDouble("deduction");
                                         OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(playerUUID));
-                                        plugin.getEconomy().depositPlayer(offlinePlayer, deduction);
+                                        EcoBalancer.getEconomy().depositPlayer(offlinePlayer, deduction);
                                         Map<String, String> placeholders = new HashMap<>();
                                         placeholders.put("operation_id", String.valueOf(operationId));
                                         placeholders.put("player", offlinePlayer.getName());

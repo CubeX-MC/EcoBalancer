@@ -7,6 +7,9 @@ messages:
     help: '&f/ecobal help &6- 帮助'
     checkall: '&f/checkall &6- 检查并清洗全部玩家余额'
     checkplayer: '&f/checkplayer <player> &6- 检查并清洗单个玩家余额'
+    gini: '&f/ecobal gini [days] &6- 计算基尼系数'
+    concentration: '&f/ecobal concentration [%...] &6- 财富集中度分析'
+    report: '&f/ecobal report [operation_id] &6- 税收报告'
     checkrecords: '&f/checkrecords [page] &6- 查看税收操作记录'
     checkrecord: '&f/checkrecord <operation_id> [alphabet|deduction] [page] &6- 查看玩家余额变动记录'
     restore: '&f/restore <operation_id> &6- 恢复操作'
@@ -93,6 +96,41 @@ messages:
   # taxaccount
   tax_account_enabled: "%prefix\n%&6税金账户&a已启用。\n&6税金账户名称为 &6%tax_account_name%&6。\n&6税金账户余额为 &6%tax_account_balance%&6。"
   tax_account_disabled: "&6税金账户&c未启用。"
+  # gini
+  gini:
+    calculating: "&7正在计算基尼系数..."
+    invalid_days: "&c天数必须大于0!"
+    invalid_number: "&c无效的数字: %input%"
+    no_data: "&c没有可用数据！"
+    header: "&e&l━━━━━━━ 基尼系数分析 ━━━━━━━"
+    result: "&6基尼系数: &e%gini% &7(%gini_percentage%)\n&6等级: &e%level%\n&6统计范围: &f%days% &7天内活跃玩家\n&6样本数量: &f%player_count% &7名玩家\n&6总货币量: &f%total_money%"
+    warning_high: "&c警告: 贫富差距极度严重！建议调整税率或发放补贴。"
+    warning_moderate: "&e提醒: 贫富差距较大，可考虑优化经济政策。"
+    info_low: "&a经济状况良好，财富分配相对平等。"
+    error: "&c计算基尼系数时发生错误！"
+  # concentration
+  concentration:
+    calculating: "&7正在计算财富集中度..."
+    invalid_percentage: "&c百分比必须在 0-100 之间: %value%"
+    invalid_number: "&c无效的数字: %input%"
+    no_data: "&c没有可用数据！"
+    header: "&e&l━━━━━━━ 财富集中度分析 ━━━━━━━\n&7总玩家数: &f%total_players% &7| 总货币量: &f%total_money%"
+    result_line: "&6Top %percentage% 玩家: &e%concentration% &7财富 &f(%player_count% 人) &7- %level%"
+    warning_extreme: "&c严重警告: 财富极度集中！经济失衡严重！"
+    warning_high: "&e注意: 财富集中度偏高，建议采取调控措施。"
+    error: "&c计算财富集中度时发生错误！"
+  # report
+  report:
+    loading: "&7正在加载税收报告..."
+    invalid_id: "&c无效的操作ID: %id%"
+    invalid_number: "&c无效的数字: %input%"
+    no_operations: "&c暂无任何操作记录！"
+    not_found: "&c未找到操作 #%operation_id%！"
+    header: "&e&l━━━━━━━ 税收报告 #%operation_id% ━━━━━━━\n&7类型: &f%operation_type% &7| 时间: &f%timestamp%"
+    summary: "&6征税总额: &e%total_tax%\n&6影响玩家: &f%player_count% &7人\n&6平均税率: &e%avg_tax_rate%\n&6操作前平均余额: &f%avg_old_balance%\n&6操作后平均余额: &f%avg_new_balance%"
+    brackets_header: "&e税阶分布:"
+    bracket_line: "&7• &f%tax_rate% &7税率: &6%player_count% &7人 | 合计: &e%total_tax% &7(%percentage%)"
+    error: "&c生成税收报告时发生错误！"
   # sql
   sql_save_error: "&c无法保存记录:"
   sql_clean_error: "&c清洗玩家余额时发生错误:"
