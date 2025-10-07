@@ -3,7 +3,9 @@ org\cubexmc\ecobalancer\commands\PercentileCommand.class
 org\cubexmc\ecobalancer\metrics\Metrics$SingleLineChart.class
 org\cubexmc\ecobalancer\commands\ConcentrationCommand$ConcentrationResult.class
 org\cubexmc\ecobalancer\commands\GiniCommand.class
+org\cubexmc\ecobalancer\commands\ImpactCommand.class
 org\cubexmc\ecobalancer\commands\HealthCommand$HealthLevel.class
+org\cubexmc\ecobalancer\commands\TrendsCommand.class
 org\cubexmc\ecobalancer\utils\DatabaseUtils.class
 org\cubexmc\ecobalancer\utils\PageUtils$ItemRenderer.class
 org\cubexmc\ecobalancer\metrics\Metrics$MultiLineChart.class
