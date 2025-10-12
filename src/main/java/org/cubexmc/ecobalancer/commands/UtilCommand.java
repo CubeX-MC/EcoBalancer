@@ -21,6 +21,9 @@ public class UtilCommand implements CommandExecutor {
     private final GiniCommand giniCommand;
     private final ConcentrationCommand concentrationCommand;
     private final TaxReportCommand reportCommand;
+    private final HealthCommand healthCommand;
+    private final ImpactCommand impactCommand;
+    private final TrendsCommand trendsCommand;
 
     public UtilCommand(EcoBalancer plugin) {
         this.plugin = plugin;
@@ -35,6 +38,9 @@ public class UtilCommand implements CommandExecutor {
         this.giniCommand = new GiniCommand(plugin);
         this.concentrationCommand = new ConcentrationCommand(plugin);
         this.reportCommand = new TaxReportCommand(plugin);
+        this.healthCommand = new HealthCommand(plugin);
+        this.impactCommand = new ImpactCommand(plugin);
+        this.trendsCommand = new TrendsCommand(plugin);
     }
 
     @Override
@@ -80,6 +86,12 @@ public class UtilCommand implements CommandExecutor {
                 return concentrationCommand.onCommand(sender, command, label, subArgs);
             case "report":
                 return reportCommand.onCommand(sender, command, label, subArgs);
+            case "health":
+                return healthCommand.onCommand(sender, command, label, subArgs);
+            case "impact":
+                return impactCommand.onCommand(sender, command, label, subArgs);
+            case "trends":
+                return trendsCommand.onCommand(sender, command, label, subArgs);
             default:
                 sender.sendMessage(plugin.getFormattedMessage("messages.unknown_command", null));
                 return false;
@@ -101,6 +113,9 @@ public class UtilCommand implements CommandExecutor {
                 plugin.getFormattedMessage("messages.commands.stats", null),
                 plugin.getFormattedMessage("messages.commands.interval", null),
                 plugin.getFormattedMessage("messages.commands.perc", null),
+                plugin.getFormattedMessage("messages.commands.health", null),
+                plugin.getFormattedMessage("messages.commands.impact", null),
+                plugin.getFormattedMessage("messages.commands.trends", null),
                 plugin.getFormattedMessage("messages.commands.reload", null),
                 plugin.getFormattedMessage("messages.help_footer", null)
         };

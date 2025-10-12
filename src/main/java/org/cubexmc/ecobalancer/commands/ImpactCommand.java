@@ -11,6 +11,7 @@ import org.cubexmc.ecobalancer.utils.MessageUtils;
 import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
 import java.text.SimpleDateFormat;
+import java.util.Map;
 import java.util.Date;
 import java.util.List;
 
@@ -27,6 +28,8 @@ public class ImpactCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        // 进度提示
+        sender.sendMessage(plugin.getFormattedMessage("messages.impact.loading", null));
         // 异步加载数据
         SchedulerUtils.asyncRun(plugin, () -> {
             try {
@@ -39,19 +42,20 @@ public class ImpactCommand implements CommandExecutor {
                         impact = DatabaseUtils.getOperationImpact(plugin, operationId, plugin.getLogger());
                         
                         if (impact == null) {
-                            SchedulerUtils.globalRun(plugin, () -> {
-                                MessageUtils.sendMessage(sender, "&c未找到操作ID " + operationId + " 的影响数据", 
-                                    plugin.getLogger(), false);
-                                MessageUtils.sendMessage(sender, "&7使用 &e/eb impact &7查看最近的税收影响", 
-                                    plugin.getLogger(), false);
-                            }, 0, 0);
+                            SchedulerUtils.runTask(plugin, () -> {
+                                Map<String, String> ph = new java.util.HashMap<>();
+                                ph.put("operation_id", Integer.toString(operationId));
+                                MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.impact.not_found", ph), plugin.getLogger(), false);
+                                MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.impact.hint_latest", null), plugin.getLogger(), false);
+                            });
                             return;
                         }
                     } catch (NumberFormatException e) {
-                        SchedulerUtils.globalRun(plugin, () -> {
-                            MessageUtils.sendMessage(sender, "&c无效的操作ID: " + args[0], 
-                                plugin.getLogger(), false);
-                        }, 0, 0);
+                        SchedulerUtils.runTask(plugin, () -> {
+                            Map<String, String> ph = new java.util.HashMap<>();
+                            ph.put("id", args[0]);
+                            MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.impact.invalid_id", ph), plugin.getLogger(), false);
+                        });
                         return;
                     }
                 } else {
@@ -60,12 +64,10 @@ public class ImpactCommand implements CommandExecutor {
                         DatabaseUtils.getRecentImpacts(plugin, 1, plugin.getLogger());
                     
                     if (recentImpacts.isEmpty()) {
-                        SchedulerUtils.globalRun(plugin, () -> {
-                            MessageUtils.sendMessage(sender, "&c尚无税收影响数据", 
-                                plugin.getLogger(), false);
-                            MessageUtils.sendMessage(sender, "&7请先执行 &e/eb checkall &7以生成影响数据", 
-                                plugin.getLogger(), false);
-                        }, 0, 0);
+                        SchedulerUtils.runTask(plugin, () -> {
+                            MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.report.no_operations", null), plugin.getLogger(), false);
+                            MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.impact.hint_latest", null), plugin.getLogger(), false);
+                        });
                         return;
                     }
                     
@@ -74,17 +76,16 @@ public class ImpactCommand implements CommandExecutor {
 
                 // 回到主线程发送报告
                 final DatabaseUtils.OperationImpact finalImpact = impact;
-                SchedulerUtils.globalRun(plugin, () -> {
+                SchedulerUtils.runTask(plugin, () -> {
                     sendImpactReport(sender, finalImpact);
-                }, 0, 0);
+                });
 
             } catch (Exception e) {
                 plugin.getLogger().severe("获取税收影响数据失败: " + e.getMessage());
                 e.printStackTrace();
-                SchedulerUtils.globalRun(plugin, () -> {
-                    MessageUtils.sendMessage(sender, "&c获取失败，请查看控制台日志", 
-                        plugin.getLogger(), false);
-                }, 0, 0);
+                SchedulerUtils.runTask(plugin, () -> {
+                    MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.impact.error", null), plugin.getLogger(), false);
+                });
             }
         }, 0);
 
@@ -95,7 +96,7 @@ public class ImpactCommand implements CommandExecutor {
      * 简化的发送消息方法
      */
     private void msg(CommandSender sender, String message) {
-        MessageUtils.sendMessage(sender, message, plugin.getLogger(), false);
+        MessageUtils.sendMessage(sender, ChatColor.translateAlternateColorCodes('&', message), plugin.getLogger(), false);
     }
 
     /**
@@ -105,48 +106,63 @@ public class ImpactCommand implements CommandExecutor {
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         String timestamp = dateFormat.format(new Date(impact.timestamp));
 
-        msg(sender, "&6&l════════════════════════════════════");
-        msg(sender, "&e&l         税收影响分析报告");
-        msg(sender, String.format("&7操作ID: &f#%d &7| 时间: %s", impact.operationId, timestamp));
-        msg(sender, "&6&l════════════════════════════════════");
+        // Header
+        msg(sender, plugin.getFormattedMessage("messages.impact.banner", null));
+        Map<String, String> header = new java.util.HashMap<>();
+        header.put("operation_id", Integer.toString(impact.operationId));
+        header.put("timestamp", timestamp);
+        msg(sender, plugin.getFormattedMessage("messages.impact.title", null));
+        msg(sender, plugin.getFormattedMessage("messages.impact.operation_line", header));
+        msg(sender, plugin.getFormattedMessage("messages.impact.banner", null));
         msg(sender, "");
 
-        // 概览
-        msg(sender, "&e&l▸ 操作概览:");
-        msg(sender, String.format("  &7征收总额: &a%s", 
-            EconomicMetrics.formatLargeNumber(impact.totalTaxCollected)));
-        msg(sender, String.format("  &7影响玩家: &f%d &7名", impact.playersAffected));
+        // Overview
+        msg(sender, plugin.getFormattedMessage("messages.impact.section_overview", null));
+        Map<String, String> overview = new java.util.HashMap<>();
+        overview.put("total_tax", EconomicMetrics.formatLargeNumber(impact.totalTaxCollected));
+        overview.put("players", Integer.toString(impact.playersAffected));
+        msg(sender, plugin.getFormattedMessage("messages.impact.collected", overview));
+        msg(sender, plugin.getFormattedMessage("messages.impact.affected", overview));
         msg(sender, "");
 
-        // 基尼系数变化
-        msg(sender, "&e&l▸ 不平等程度变化:");
+        // Gini change
+        msg(sender, plugin.getFormattedMessage("messages.impact.section_inequality", null));
         double giniChange = impact.afterGini - impact.beforeGini;
         double giniChangePercent = (impact.beforeGini > 0) ? (giniChange / impact.beforeGini * 100) : 0;
-        String giniTrend = getChangeIndicator(giniChange, true); // true表示值降低是改善
+        String giniTrend = getChangeIndicator(giniChange, true); // lower is better
         String giniColor = (giniChange < 0) ? "&a" : (giniChange > 0) ? "&c" : "&e";
-        
-        msg(sender, String.format("  &7基尼系数: %.3f → %.3f %s%.3f (%s%.1f%%&7)", 
-            impact.beforeGini, impact.afterGini, giniColor, giniChange, giniColor, giniChangePercent));
+
+        Map<String, String> gini = new java.util.HashMap<>();
+        gini.put("before", String.format("%.3f", impact.beforeGini));
+        gini.put("after", String.format("%.3f", impact.afterGini));
+        gini.put("delta_color", giniColor);
+        gini.put("delta", String.format("%.3f", giniChange));
+        gini.put("delta_pct", String.format("%.1f", giniChangePercent));
+        msg(sender, plugin.getFormattedMessage("messages.impact.gini_line", gini));
         msg(sender, "  " + generateComparisonBar(impact.beforeGini, impact.afterGini, 1.0, 20));
         msg(sender, String.format("    &8└─ %s %s", giniTrend, getGiniChangeDescription(giniChange)));
         msg(sender, "");
 
-        // 财富集中度变化 (Top 1%)
-        msg(sender, "&e&l▸ 财富集中度变化:");
+        // Concentration change (Top 1%)
+        msg(sender, plugin.getFormattedMessage("messages.impact.section_concentration", null));
         double top1Change = impact.afterTop1Pct - impact.beforeTop1Pct;
         double top1ChangePercent = (impact.beforeTop1Pct > 0) ? (top1Change / impact.beforeTop1Pct * 100) : 0;
         String top1Trend = getChangeIndicator(top1Change, true);
         String top1Color = (top1Change < 0) ? "&a" : (top1Change > 0) ? "&c" : "&e";
-        
-        msg(sender, String.format("  &7Top 1%% 财富占比: %.1f%% → %.1f%% %s%.1f%% (%s%.1f%%&7)", 
-            impact.beforeTop1Pct * 100, impact.afterTop1Pct * 100, 
-            top1Color, top1Change * 100, top1Color, top1ChangePercent));
+
+        Map<String, String> top1 = new java.util.HashMap<>();
+        top1.put("before", String.format("%.1f", impact.beforeTop1Pct * 100));
+        top1.put("after", String.format("%.1f", impact.afterTop1Pct * 100));
+        top1.put("delta_color", top1Color);
+        top1.put("delta", String.format("%.1f", top1Change * 100));
+        top1.put("delta_pct", String.format("%.1f", top1ChangePercent));
+        msg(sender, plugin.getFormattedMessage("messages.impact.top1_line", top1));
         msg(sender, "  " + generateComparisonBar(impact.beforeTop1Pct, impact.afterTop1Pct, 1.0, 20));
         msg(sender, String.format("    &8└─ %s %s", top1Trend, getConcentrationChangeDescription(top1Change)));
         msg(sender, "");
 
-        // 中位数和均值变化
-        msg(sender, "&e&l▸ 财富分布变化:");
+        // Median and mean changes
+        msg(sender, plugin.getFormattedMessage("messages.impact.section_distribution", null));
         
         // 中位数
         double medianChange = impact.afterMedian - impact.beforeMedian;
@@ -154,11 +170,13 @@ public class ImpactCommand implements CommandExecutor {
         String medianTrend = getChangeIndicator(medianChange, false); // false表示值升高是改善
         String medianColor = (medianChange > 0) ? "&a" : (medianChange < 0) ? "&c" : "&e";
         
-        msg(sender, String.format("  &7中位数: %s → %s %s%s (%s%.1f%%&7)", 
-            EconomicMetrics.formatLargeNumber(impact.beforeMedian),
-            EconomicMetrics.formatLargeNumber(impact.afterMedian),
-            medianColor, EconomicMetrics.formatLargeNumber(medianChange), 
-            medianColor, medianChangePercent));
+        Map<String, String> med = new java.util.HashMap<>();
+        med.put("before", EconomicMetrics.formatLargeNumber(impact.beforeMedian));
+        med.put("after", EconomicMetrics.formatLargeNumber(impact.afterMedian));
+        med.put("delta_color", medianColor);
+        med.put("delta", EconomicMetrics.formatLargeNumber(medianChange));
+        med.put("delta_pct", String.format("%.1f", medianChangePercent));
+        msg(sender, plugin.getFormattedMessage("messages.impact.median_line", med));
         msg(sender, String.format("    &8└─ %s", medianTrend));
         
         // 均值
@@ -167,11 +185,13 @@ public class ImpactCommand implements CommandExecutor {
         String meanTrend = getChangeIndicator(meanChange, false);
         String meanColor = (meanChange > 0) ? "&a" : (meanChange < 0) ? "&c" : "&e";
         
-        msg(sender, String.format("  &7平均值: %s → %s %s%s (%s%.1f%%&7)", 
-            EconomicMetrics.formatLargeNumber(impact.beforeMean),
-            EconomicMetrics.formatLargeNumber(impact.afterMean),
-            meanColor, EconomicMetrics.formatLargeNumber(meanChange), 
-            meanColor, meanChangePercent));
+        Map<String, String> mean = new java.util.HashMap<>();
+        mean.put("before", EconomicMetrics.formatLargeNumber(impact.beforeMean));
+        mean.put("after", EconomicMetrics.formatLargeNumber(impact.afterMean));
+        mean.put("delta_color", meanColor);
+        mean.put("delta", EconomicMetrics.formatLargeNumber(meanChange));
+        mean.put("delta_pct", String.format("%.1f", meanChangePercent));
+        msg(sender, plugin.getFormattedMessage("messages.impact.mean_line", mean));
         msg(sender, String.format("    &8└─ %s", meanTrend));
         
         // 标准差
@@ -180,36 +200,40 @@ public class ImpactCommand implements CommandExecutor {
         String stdDevTrend = getChangeIndicator(stdDevChange, true); // 标准差降低是改善
         String stdDevColor = (stdDevChange < 0) ? "&a" : (stdDevChange > 0) ? "&c" : "&e";
         
-        msg(sender, String.format("  &7标准差: %s → %s %s%s (%s%.1f%%&7)", 
-            EconomicMetrics.formatLargeNumber(impact.beforeStdDev),
-            EconomicMetrics.formatLargeNumber(impact.afterStdDev),
-            stdDevColor, EconomicMetrics.formatLargeNumber(stdDevChange), 
-            stdDevColor, stdDevChangePercent));
+        Map<String, String> sd = new java.util.HashMap<>();
+        sd.put("before", EconomicMetrics.formatLargeNumber(impact.beforeStdDev));
+        sd.put("after", EconomicMetrics.formatLargeNumber(impact.afterStdDev));
+        sd.put("delta_color", stdDevColor);
+        sd.put("delta", EconomicMetrics.formatLargeNumber(stdDevChange));
+        sd.put("delta_pct", String.format("%.1f", stdDevChangePercent));
+        msg(sender, plugin.getFormattedMessage("messages.impact.stddev_line", sd));
         msg(sender, String.format("    &8└─ %s", stdDevTrend));
         msg(sender, "");
 
-        // 总货币量变化
-        msg(sender, "&e&l▸ 经济规模变化:");
+        // Total money change
+        msg(sender, plugin.getFormattedMessage("messages.impact.section_scale", null));
         double totalMoneyChange = impact.afterTotalMoney - impact.beforeTotalMoney;
         double totalMoneyChangePercent = (impact.beforeTotalMoney > 0) ? 
             (totalMoneyChange / impact.beforeTotalMoney * 100) : 0;
-        
-        msg(sender, String.format("  &7总货币量: %s → %s", 
-            EconomicMetrics.formatLargeNumber(impact.beforeTotalMoney),
-            EconomicMetrics.formatLargeNumber(impact.afterTotalMoney)));
-        msg(sender, String.format("  &7变化: &c%s &7(%.2f%%)", 
-            EconomicMetrics.formatLargeNumber(totalMoneyChange), totalMoneyChangePercent));
-        msg(sender, String.format("    &8└─ 通过税收移除了 %.2f%% 的流通货币", 
-            Math.abs(totalMoneyChangePercent)));
+
+        Map<String, String> scale = new java.util.HashMap<>();
+        scale.put("before", EconomicMetrics.formatLargeNumber(impact.beforeTotalMoney));
+        scale.put("after", EconomicMetrics.formatLargeNumber(impact.afterTotalMoney));
+        scale.put("change", EconomicMetrics.formatLargeNumber(totalMoneyChange));
+        scale.put("percent", String.format("%.2f", totalMoneyChangePercent));
+        scale.put("removed_percent", String.format("%.2f", Math.abs(totalMoneyChangePercent)));
+        msg(sender, plugin.getFormattedMessage("messages.impact.total_line", scale));
+        msg(sender, plugin.getFormattedMessage("messages.impact.change_line", scale));
+        msg(sender, plugin.getFormattedMessage("messages.impact.removed_line", scale));
         msg(sender, "");
 
-        // 综合评价
-        msg(sender, "&e&l▸ 综合评价:");
+        // Overall assessment
+        msg(sender, plugin.getFormattedMessage("messages.impact.section_assessment", null));
         String overallAssessment = getOverallAssessment(giniChange, top1Change, medianChange);
         msg(sender, "  " + overallAssessment);
         
         msg(sender, "");
-        msg(sender, "&6&l════════════════════════════════════");
+        msg(sender, plugin.getFormattedMessage("messages.impact.banner", null));
     }
 
     /**
@@ -249,15 +273,14 @@ public class ImpactCommand implements CommandExecutor {
      */
     private String getChangeIndicator(double change, boolean lowerIsBetter) {
         if (Math.abs(change) < 0.001) {
-            return "&e→ 保持稳定";
+            return plugin.getFormattedMessage("messages.impact.trend.stable", null);
         }
-        
+
         boolean isImprovement = lowerIsBetter ? (change < 0) : (change > 0);
         String arrow = (change < 0) ? "↓" : "↑";
         String color = isImprovement ? "&a" : "&c";
-        String status = isImprovement ? "改善" : "恶化";
-        
-        return String.format("%s%s %s", color, arrow, status);
+        String key = isImprovement ? "messages.impact.trend.improve" : "messages.impact.trend.worsen";
+        return String.format("%s%s %s", color, arrow, plugin.getFormattedMessage(key, null));
     }
 
     /**
@@ -266,13 +289,13 @@ public class ImpactCommand implements CommandExecutor {
     private String getGiniChangeDescription(double change) {
         double absChange = Math.abs(change);
         if (absChange >= 0.1) {
-            return "显著变化";
+            return plugin.getFormattedMessage("messages.impact.gini_delta.major", null);
         } else if (absChange >= 0.05) {
-            return "明显变化";
+            return plugin.getFormattedMessage("messages.impact.gini_delta.noticeable", null);
         } else if (absChange >= 0.01) {
-            return "轻微变化";
+            return plugin.getFormattedMessage("messages.impact.gini_delta.slight", null);
         } else {
-            return "微小变化";
+            return plugin.getFormattedMessage("messages.impact.gini_delta.tiny", null);
         }
     }
 
@@ -282,13 +305,13 @@ public class ImpactCommand implements CommandExecutor {
     private String getConcentrationChangeDescription(double change) {
         double absChange = Math.abs(change) * 100;
         if (absChange >= 5) {
-            return "显著再分配";
+            return plugin.getFormattedMessage("messages.impact.concentration_delta.major", null);
         } else if (absChange >= 2) {
-            return "明显再分配";
+            return plugin.getFormattedMessage("messages.impact.concentration_delta.noticeable", null);
         } else if (absChange >= 0.5) {
-            return "轻微再分配";
+            return plugin.getFormattedMessage("messages.impact.concentration_delta.slight", null);
         } else {
-            return "影响微小";
+            return plugin.getFormattedMessage("messages.impact.concentration_delta.tiny", null);
         }
     }
 
@@ -312,15 +335,15 @@ public class ImpactCommand implements CommandExecutor {
         else if (medianChange < 0) worsenCount++;
         
         if (improveCount >= 2 && worsenCount == 0) {
-            return "&a&l✓ 税收政策效果显著，成功改善了经济不平等";
+            return plugin.getFormattedMessage("messages.impact.assessment.strong_improve", null);
         } else if (improveCount > worsenCount) {
-            return "&a&l✓ 税收政策总体有效，经济状况得到改善";
+            return plugin.getFormattedMessage("messages.impact.assessment.improve", null);
         } else if (improveCount == worsenCount) {
-            return "&e&l⚠ 税收政策效果中性，建议调整税率";
+            return plugin.getFormattedMessage("messages.impact.assessment.neutral", null);
         } else if (worsenCount > improveCount) {
-            return "&c&l✗ 税收政策可能需要调整，部分指标恶化";
+            return plugin.getFormattedMessage("messages.impact.assessment.worsen", null);
         } else {
-            return "&c&l✗ 税收政策效果不佳，建议重新评估税率设置";
+            return plugin.getFormattedMessage("messages.impact.assessment.very_bad", null);
         }
     }
 }

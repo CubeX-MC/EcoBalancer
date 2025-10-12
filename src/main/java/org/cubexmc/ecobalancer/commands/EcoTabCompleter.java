@@ -28,7 +28,7 @@ public class EcoTabCompleter implements TabCompleter {
         if (args.length == 1) {
             String[] subCommands = {"help", "reload", "checkall", "checkplayer", "stats",
                     "perc", "checkrecords", "checkrecord", "restore", "interval",
-                    "gini", "concentration", "report"};
+                    "gini", "concentration", "report", "health", "impact", "trends"};
             StringUtil.copyPartialMatches(args[0], Arrays.asList(subCommands), completions);
             return completions;
         }
@@ -60,14 +60,17 @@ public class EcoTabCompleter implements TabCompleter {
                     }
                     break;
                 case "checkrecord":
-                    // Delegate to CheckRecordCommand's completer if present (it implements TabExecutor)
-                    if (util.getCheckRecordCommand() != null) {
-                        return util.getCheckRecordCommand().onTabComplete(sender, command, alias, subArgs);
-                    }
-                    // Fallback to static options for the 2nd arg
-                    if (subArgs.length == 2) {
+                    // Suggest sort options at the second argument; third argument suggests page numbers
+                    if (subArgs.length == 1) {
+                        // no suggestions for operation id
+                        return completions;
+                    } else if (subArgs.length == 2) {
                         List<String> sortOptions = Arrays.asList("deduction", "alphabet");
                         StringUtil.copyPartialMatches(subArgs[1], sortOptions, completions);
+                        return completions;
+                    } else if (subArgs.length == 3) {
+                        List<String> pages = Arrays.asList("1", "2", "3", "4", "5");
+                        StringUtil.copyPartialMatches(subArgs[2], pages, completions);
                         return completions;
                     }
                     break;

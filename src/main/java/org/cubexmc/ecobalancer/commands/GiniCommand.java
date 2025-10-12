@@ -5,6 +5,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.cubexmc.ecobalancer.EcoBalancer;
 import org.cubexmc.ecobalancer.utils.EconomicMetrics;
+import org.cubexmc.ecobalancer.utils.AnalysisFilters;
 import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
 import java.util.HashMap;
@@ -26,35 +27,20 @@ public class GiniCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        // 解析参数
-        Integer activeDays = null;
-        if (args.length > 0) {
-            try {
-                activeDays = Integer.parseInt(args[0]);
-                if (activeDays <= 0) {
-                    Map<String, String> placeholders = new HashMap<>();
-                    placeholders.put("days", args[0]);
-                    sender.sendMessage(plugin.getFormattedMessage("messages.gini.invalid_days", placeholders));
-                    return false;
-                }
-            } catch (NumberFormatException e) {
-                Map<String, String> placeholders = new HashMap<>();
-                placeholders.put("input", args[0]);
-                sender.sendMessage(plugin.getFormattedMessage("messages.gini.invalid_number", placeholders));
-                return false;
-            }
-        }
+        // 解析过滤参数（WorldEdit风格 key:value），其余保留给位置参数（兼容旧用法）
+        AnalysisFilters.ParseResult pr = AnalysisFilters.parse(args);
+        AnalysisFilters.FilterCriteria criteria = pr.criteria;
 
         // 提示开始计算
         sender.sendMessage(plugin.getFormattedMessage("messages.gini.calculating", null));
 
-        final Integer finalActiveDays = activeDays;
+        final AnalysisFilters.FilterCriteria finalCriteria = criteria;
 
         // 异步计算（避免阻塞主线程）
         SchedulerUtils.runTaskAsync(plugin, () -> {
             try {
-                // 收集余额数据
-                List<Double> balances = EconomicMetrics.collectBalances(finalActiveDays);
+                // 收集余额数据（带过滤）
+                List<Double> balances = AnalysisFilters.collectFilteredBalances(finalCriteria, plugin.getConfig().getString("stats-world", ""));
 
                 if (balances.isEmpty()) {
                     SchedulerUtils.runTask(plugin, () -> {
@@ -76,7 +62,7 @@ public class GiniCommand implements CommandExecutor {
                     placeholders.put("level", giniLevel);
                     placeholders.put("player_count", String.valueOf(balances.size()));
                     placeholders.put("total_money", EconomicMetrics.formatLargeNumber(totalMoney));
-                    placeholders.put("days", finalActiveDays == null ? "∞" : String.valueOf(finalActiveDays));
+                    placeholders.put("days", finalCriteria.activeWithinDays == null ? "∞" : String.valueOf(finalCriteria.activeWithinDays));
 
                     sender.sendMessage(plugin.getFormattedMessage("messages.gini.header", null));
                     sender.sendMessage(plugin.getFormattedMessage("messages.gini.result", placeholders));

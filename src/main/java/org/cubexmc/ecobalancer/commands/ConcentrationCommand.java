@@ -5,6 +5,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.cubexmc.ecobalancer.EcoBalancer;
 import org.cubexmc.ecobalancer.utils.EconomicMetrics;
+import org.cubexmc.ecobalancer.utils.AnalysisFilters;
 import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
 import java.util.*;
@@ -24,15 +25,17 @@ public class ConcentrationCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        // 解析百分比参数
+        // 解析过滤参数
+        AnalysisFilters.ParseResult pr = AnalysisFilters.parse(args);
+        AnalysisFilters.FilterCriteria criteria = pr.criteria;
+        List<String> rest = pr.remainingArgs;
+
+        // 解析百分比位置参数
         List<Double> percentages = new ArrayList<>();
-        
-        if (args.length == 0) {
-            // 默认值
+        if (rest.isEmpty()) {
             percentages.addAll(Arrays.asList(1.0, 5.0, 10.0, 20.0));
         } else {
-            // 解析用户输入
-            for (String arg : args) {
+            for (String arg : rest) {
                 try {
                     double pct = Double.parseDouble(arg);
                     if (pct <= 0 || pct > 100) {
@@ -60,8 +63,8 @@ public class ConcentrationCommand implements CommandExecutor {
         // 异步计算
         SchedulerUtils.runTaskAsync(plugin, () -> {
             try {
-                // 收集余额数据
-                List<Double> balances = EconomicMetrics.collectBalances(null);
+                // 收集余额数据（带过滤）
+                List<Double> balances = AnalysisFilters.collectFilteredBalances(criteria, plugin.getConfig().getString("stats-world", ""));
 
                 if (balances.isEmpty()) {
                     SchedulerUtils.runTask(plugin, () -> {

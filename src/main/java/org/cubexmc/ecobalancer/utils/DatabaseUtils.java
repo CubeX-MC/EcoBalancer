@@ -5,10 +5,6 @@ import org.bukkit.plugin.Plugin;
 
 import java.io.File;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.logging.Logger;
 
 /**
@@ -25,6 +21,8 @@ public class DatabaseUtils {
             s.execute("PRAGMA temp_store=MEMORY");
             // Negative value sets cache size in KB for newer SQLite
             s.execute("PRAGMA cache_size=-8192");
+            // Wait up to 10s for locked database to become available
+            s.execute("PRAGMA busy_timeout=10000");
         } catch (SQLException ignored) {
         }
     }
@@ -41,7 +39,7 @@ public class DatabaseUtils {
      */
     public static Connection getConnection(Plugin plugin) throws SQLException {
         File databaseFile = getDatabaseFile(plugin);
-        Connection c = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath());
+        Connection c = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.getAbsolutePath() + "?busy_timeout=10000");
         applyPragmas(c);
         return c;
     }
@@ -57,8 +55,8 @@ public class DatabaseUtils {
                 // 创建operations表
                 statement.execute("CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, is_restored BOOLEAN NOT NULL DEFAULT 0)");
                 
-                // 创建records表
-                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player_name TEXT NOT NULL, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL)");
+                // 创建records表（保持兼容：若已存在则不变；新安装包含外键约束）
+                statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player_name TEXT NOT NULL, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL, FOREIGN KEY(operation_id) REFERENCES operations(id) ON DELETE CASCADE)");
 
                 // 索引优化
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_records_operation_id ON records(operation_id)");
@@ -123,9 +121,10 @@ public class DatabaseUtils {
      * @param logger 日志器
      */
     public static void saveRecord(Plugin plugin, OfflinePlayer player, double oldBalance, double newBalance, double deduction, boolean isCheckAll, int operationId, Logger logger) {
-        try (Connection connection = getConnection(plugin)) {
-            try (PreparedStatement preparedStatement = connection.prepareStatement(
-                    "INSERT INTO records (player_name, player, old_balance, new_balance, deduction, timestamp, is_checkall, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+        runSqlWithRetry(logger, () -> {
+            try (Connection connection = getConnection(plugin);
+                 PreparedStatement preparedStatement = connection.prepareStatement(
+                        "INSERT INTO records (player_name, player, old_balance, new_balance, deduction, timestamp, is_checkall, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
                 preparedStatement.setString(1, player.getName());
                 preparedStatement.setString(2, player.getUniqueId().toString());
                 preparedStatement.setDouble(3, oldBalance);
@@ -136,8 +135,33 @@ public class DatabaseUtils {
                 preparedStatement.setInt(8, operationId);
                 preparedStatement.executeUpdate();
             }
-        } catch (SQLException e) {
-            logger.severe("保存记录失败: " + e.getMessage());
+        });
+    }
+
+    @FunctionalInterface
+    private interface SqlRunnable { void run() throws SQLException; }
+
+    private static void runSqlWithRetry(Logger logger, SqlRunnable op) {
+        int attempts = 6; // ~ up to ~ (5 * 100ms) + busy_timeout allowance
+        long sleepMs = 100L;
+        SQLException last = null;
+        for (int i = 0; i < attempts; i++) {
+            try {
+                op.run();
+                return;
+            } catch (SQLException e) {
+                last = e;
+                String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase(java.util.Locale.ROOT);
+                if (msg.contains("database is locked") || msg.contains("sqlite_busy")) {
+                    try { Thread.sleep(sleepMs); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+                    sleepMs = Math.min(1000L, sleepMs * 2);
+                    continue;
+                }
+                break;
+            }
+        }
+        if (last != null) {
+            logger.severe("保存记录失败: " + last.getMessage());
         }
     }
 
@@ -197,6 +221,26 @@ public class DatabaseUtils {
     }
 
     /**
+     * 统计某次操作中受到影响（扣款>0）的玩家数量
+     */
+    public static int getAffectedPlayersCount(Plugin plugin, int operationId, Logger logger) {
+        try (Connection connection = getConnection(plugin)) {
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "SELECT COUNT(*) AS cnt FROM records WHERE operation_id = ? AND deduction > 0")) {
+                preparedStatement.setInt(1, operationId);
+                try (ResultSet rs = preparedStatement.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getInt("cnt");
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            logger.severe("统计受影响玩家数量失败: " + e.getMessage());
+        }
+        return 0;
+    }
+
+    /**
      * 清理过期记录
      * @param plugin 插件实例
      * @param retentionDays 保留天数
@@ -236,26 +280,25 @@ public class DatabaseUtils {
                 "active_players_7d, active_players_30d, gini_coefficient, median_balance, mean_balance, " +
                 "std_dev, top1_percentage, top5_percentage, top10_percentage) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        
-        try (Connection conn = getConnection(plugin);
-             PreparedStatement statement = conn.prepareStatement(sql)) {
-            statement.setString(1, snapshotData.date);
-            statement.setLong(2, snapshotData.timestamp);
-            statement.setDouble(3, snapshotData.totalMoney);
-            statement.setInt(4, snapshotData.playerCount);
-            statement.setInt(5, snapshotData.activePlayers7d);
-            statement.setInt(6, snapshotData.activePlayers30d);
-            statement.setDouble(7, snapshotData.gini);
-            statement.setDouble(8, snapshotData.median);
-            statement.setDouble(9, snapshotData.mean);
-            statement.setDouble(10, snapshotData.stdDev);
-            statement.setDouble(11, snapshotData.top1Pct);
-            statement.setDouble(12, snapshotData.top5Pct);
-            statement.setDouble(13, snapshotData.top10Pct);
-            statement.executeUpdate();
-        } catch (SQLException e) {
-            logger.severe("保存经济快照失败: " + e.getMessage());
-        }
+        runSqlWithRetry(logger, () -> {
+            try (Connection conn = getConnection(plugin);
+                 PreparedStatement statement = conn.prepareStatement(sql)) {
+                statement.setString(1, snapshotData.date);
+                statement.setLong(2, snapshotData.timestamp);
+                statement.setDouble(3, snapshotData.totalMoney);
+                statement.setInt(4, snapshotData.playerCount);
+                statement.setInt(5, snapshotData.activePlayers7d);
+                statement.setInt(6, snapshotData.activePlayers30d);
+                statement.setDouble(7, snapshotData.gini);
+                statement.setDouble(8, snapshotData.median);
+                statement.setDouble(9, snapshotData.mean);
+                statement.setDouble(10, snapshotData.stdDev);
+                statement.setDouble(11, snapshotData.top1Pct);
+                statement.setDouble(12, snapshotData.top5Pct);
+                statement.setDouble(13, snapshotData.top10Pct);
+                statement.executeUpdate();
+            }
+        });
     }
 
     /**
@@ -271,29 +314,28 @@ public class DatabaseUtils {
                 "before_top1_pct, after_top1_pct, before_total_money, after_total_money, " +
                 "total_tax_collected, players_affected, timestamp) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        
-        try (Connection conn = getConnection(plugin);
-             PreparedStatement statement = conn.prepareStatement(sql)) {
-            statement.setInt(1, operationId);
-            statement.setDouble(2, impactData.beforeGini);
-            statement.setDouble(3, impactData.afterGini);
-            statement.setDouble(4, impactData.beforeMedian);
-            statement.setDouble(5, impactData.afterMedian);
-            statement.setDouble(6, impactData.beforeMean);
-            statement.setDouble(7, impactData.afterMean);
-            statement.setDouble(8, impactData.beforeStdDev);
-            statement.setDouble(9, impactData.afterStdDev);
-            statement.setDouble(10, impactData.beforeTop1Pct);
-            statement.setDouble(11, impactData.afterTop1Pct);
-            statement.setDouble(12, impactData.beforeTotalMoney);
-            statement.setDouble(13, impactData.afterTotalMoney);
-            statement.setDouble(14, impactData.totalTaxCollected);
-            statement.setInt(15, impactData.playersAffected);
-            statement.setLong(16, impactData.timestamp);
-            statement.executeUpdate();
-        } catch (SQLException e) {
-            logger.severe("保存操作影响数据失败: " + e.getMessage());
-        }
+        runSqlWithRetry(logger, () -> {
+            try (Connection conn = getConnection(plugin);
+                 PreparedStatement statement = conn.prepareStatement(sql)) {
+                statement.setInt(1, operationId);
+                statement.setDouble(2, impactData.beforeGini);
+                statement.setDouble(3, impactData.afterGini);
+                statement.setDouble(4, impactData.beforeMedian);
+                statement.setDouble(5, impactData.afterMedian);
+                statement.setDouble(6, impactData.beforeMean);
+                statement.setDouble(7, impactData.afterMean);
+                statement.setDouble(8, impactData.beforeStdDev);
+                statement.setDouble(9, impactData.afterStdDev);
+                statement.setDouble(10, impactData.beforeTop1Pct);
+                statement.setDouble(11, impactData.afterTop1Pct);
+                statement.setDouble(12, impactData.beforeTotalMoney);
+                statement.setDouble(13, impactData.afterTotalMoney);
+                statement.setDouble(14, impactData.totalTaxCollected);
+                statement.setInt(15, impactData.playersAffected);
+                statement.setLong(16, impactData.timestamp);
+                statement.executeUpdate();
+            }
+        });
     }
 
     /**

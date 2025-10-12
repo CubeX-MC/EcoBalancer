@@ -5,17 +5,20 @@ messages:
   # help
   commands:
     help: '&f/ecobal help &6- 帮助'
-    checkall: '&f/checkall &6- 检查并清洗全部玩家余额'
-    checkplayer: '&f/checkplayer <player> &6- 检查并清洗单个玩家余额'
+    checkall: '&f/ecobal checkall &6- 检查并清洗全部玩家余额'
+    checkplayer: '&f/ecobal checkplayer <player> &6- 检查并清洗单个玩家余额'
     gini: '&f/ecobal gini [days] &6- 计算基尼系数'
     concentration: '&f/ecobal concentration [%...] &6- 财富集中度分析'
     report: '&f/ecobal report [operation_id] &6- 税收报告'
-    checkrecords: '&f/checkrecords [page] &6- 查看税收操作记录'
-    checkrecord: '&f/checkrecord <operation_id> [alphabet|deduction] [page] &6- 查看玩家余额变动记录'
-    restore: '&f/restore <operation_id> &6- 恢复操作'
-    stats: '&f/stats <number of bars> [low] [up] &6- 显示描述性统计'
-    interval: '&f/interval [alphabet|balance] [low] [up] [page] &6- 显示指定区间的玩家'
-    perc: '&f/perc <balance> [low] [up] &6- 显示玩家余额百分位'
+    checkrecords: '&f/ecobal checkrecords [page] &6- 查看税收操作记录'
+    checkrecord: '&f/ecobal checkrecord <operation_id> [alphabet|deduction] [page] &6- 查看玩家余额变动记录'
+    restore: '&f/ecobal restore <operation_id> &6- 恢复操作'
+    stats: '&f/ecobal stats <number of bars> [low] [up] &6- 显示描述性统计'
+    interval: '&f/ecobal interval [alphabet|balance] [low] [up] [page] &6- 显示指定区间的玩家'
+    perc: '&f/ecobal perc <balance> [low] [up] &6- 显示玩家余额百分位'
+    health: '&f/ecobal health &6- 经济健康报告'
+    impact: '&f/ecobal impact [operation_id] &6- 税收影响分析'
+    trends: '&f/ecobal trends [days] &6- 经济趋势报告'
     reload: '&f/ecobal reload &6- 重载配置文件'
   help_footer: '&7&o来自&c&lCube&f&lX&7&o统治阶级工具包'
   help_header: '&e&lEcoBalancer &f帮助:'
@@ -23,6 +26,7 @@ messages:
   next_page: "&6下一页"
   no_prev_page: "   "
   no_next_page: "   "
+  processing: "%prefix% &7正在处理，请稍候..."
   # check
   scanning_offline_players: '&7正在扫描离线玩家&f...'
   enter_player_name_or_use_checkall: '&6请输入玩家名称或使用&f/checkall'
@@ -45,6 +49,8 @@ messages:
   records_page: "%prev% &e第 &f%page% &e页,共 &f%total% &e页 %next%"
   records_footer: "&7&o使用 /checkrecords <页码> 查看更多。"
   records_error: "&c发生错误：%error%"
+  no_records: "&c暂无记录。"
+  unknown_command: "&c未知子命令。使用 /ecobal help 查看帮助。"
   # record
   record_usage: "&6用法: &f/checkrecord <操作ID> [页码]"
   record_invalid_id: "&c无效的操作ID!"
@@ -62,6 +68,8 @@ messages:
   restoring_all: "&7正在恢复操作 %operation_id% (全服检查)..."
   restored_all: "&a操作 %operation_id% 已恢复 (全服检查)!"
   restored_player: "&a操作 %operation_id% 已恢复 (玩家检查)!"
+  restored_range: "&a已回溯操作 #%operation_id% 及其之后的 %count% 个操作。"
+  restore_already_restored: "&e操作 #%operation_id% 已回溯过。"
   restore_invalid_id: "&c无效的操作ID!"
   restore_error: "&c发生错误：%error%"
   restore_operation_not_found: "&c未找到操作!"
@@ -79,9 +87,11 @@ messages:
   stats_mean_median: "均值: &e%mean% &f中位数: &e%median%"
   stats_sd: "标准差: &e%sd%"
   # intervalplayer
-  interval_usage: "&f/intervalplayer [low] [up] &6- 显示指定区间的玩家"
+  interval_usage: "&f/interval [alphabet|balance] [low] [up] [page] &6- 显示指定区间的玩家"
   interval_limits: "&6使用 '_' 表示无限制。"
   interval_invalid_args: "&c无效的参数。 &f请使用数字或'_'限制范围。"
+  interval_invalid_low: "&c无效的下界。"
+  interval_invalid_up: "&c无效的上界。"
   interval_collecting: "&7正在收集玩家余额信息..."
   interval_sorting: "&7正在排序..."
   interval_header: "&6玩家余额区间为 &e%low% - %up% &6的玩家:"
@@ -93,8 +103,54 @@ messages:
   perc_limits: "&7使用 '_' 表示无限制。"
   perc_invalid_args: "&c无效的参数。 &f请使用数字或'_'限制范围。"
   perc_success: "&6余额 &e%balance% &6在 &e%low% - %up% &6区间中的百分位为 &e%percentile%%&6。"
+  # impact
+  impact:
+    loading: "&7正在加载影响数据..."
+    invalid_id: "&c无效的操作ID: %id%"
+    not_found: "&c未找到操作 #%operation_id% 的影响数据"
+    error: "&c获取影响数据失败，请查看控制台日志"
+    hint_latest: "&7使用 &e/eb impact &7查看最近的税收影响"
+    banner: "&6&l════════════════════════════════════"
+    title: "&e&l         税收影响分析报告"
+    operation_line: "&7操作ID: &f#%operation_id% &7| 时间: %timestamp%"
+    section_overview: "&e&l▸ 操作概览:"
+    collected: "  &7征收总额: &a%total_tax%"
+    affected: "  &7影响玩家: &f%players% &7名"
+    section_inequality: "&e&l▸ 不平等程度变化:"
+    gini_line: "  &7基尼系数: %before% → %after% %delta_color%%delta% (%delta_color%%delta_pct%%%&7)"
+    section_concentration: "&e&l▸ 财富集中度变化:"
+    top1_line: "  &7Top 1%% 财富占比: %before%%% → %after%%% %delta_color%%delta%%% (%delta_color%%delta_pct%%%&7)"
+    section_distribution: "&e&l▸ 财富分布变化:"
+    median_line: "  &7中位数: %before% → %after% %delta_color%%delta% (%delta_color%%delta_pct%%%&7)"
+    mean_line: "  &7平均值: %before% → %after% %delta_color%%delta% (%delta_color%%delta_pct%%%&7)"
+    stddev_line: "  &7标准差: %before% → %after% %delta_color%%delta% (%delta_color%%delta_pct%%%&7)"
+    section_scale: "&e&l▸ 经济规模变化:"
+    total_line: "  &7总货币量: %before% → %after%"
+    change_line: "  &7变化: &c%change% &7(%percent%%)"
+    removed_line: "    &8└─ 通过税收移除了 %removed_percent%% 的流通货币"
+    section_assessment: "&e&l▸ 综合评价:"
+    trend:
+      stable: "&e→ 保持稳定"
+      improve: "改善"
+      worsen: "恶化"
+    gini_delta:
+      major: "显著变化"
+      noticeable: "明显变化"
+      slight: "轻微变化"
+      tiny: "微小变化"
+    concentration_delta:
+      major: "显著再分配"
+      noticeable: "明显再分配"
+      slight: "轻微再分配"
+      tiny: "影响微小"
+    assessment:
+      strong_improve: "&a&l✓ 税收政策效果显著，成功改善了经济不平等"
+      improve: "&a&l✓ 税收政策总体有效，经济状况得到改善"
+      neutral: "&e&l⚠ 税收政策效果中性，建议调整税率"
+      worsen: "&c&l✗ 税收政策可能需要调整，部分指标恶化"
+      very_bad: "&c&l✗ 税收政策效果不佳，建议重新评估税率设置"
   # taxaccount
-  tax_account_enabled: "%prefix\n%&6税金账户&a已启用。\n&6税金账户名称为 &6%tax_account_name%&6。\n&6税金账户余额为 &6%tax_account_balance%&6。"
+  tax_account_enabled: "%prefix\n&6税金账户&a已启用。\n&6税金账户名称为 &6%tax_account_name%&6。\n&6税金账户余额为 &6%tax_account_balance%&6。"
   tax_account_disabled: "&6税金账户&c未启用。"
   # gini
   gini:
@@ -134,3 +190,60 @@ messages:
   # sql
   sql_save_error: "&c无法保存记录:"
   sql_clean_error: "&c清洗玩家余额时发生错误:"
+  # health
+  health:
+    calculating: "&7正在计算经济健康度..."
+    error: "&c计算失败，请查看控制台日志"
+    no_data: "&c没有找到任何玩家数据"
+    title: "&e&l         经济健康度评估报告"
+    generated_at: "&7生成时间: &f%timestamp%"
+    score_line: "&b综合评分: %score%/100 &7(%level%)"
+    trend_up: "&7趋势: &c↑ 恶化"
+    trend_down: "&7趋势: &a↓ 改善"
+    trend_stable: "&7趋势: &e→ 稳定"
+    details_header: "&e&l▸ 详细指标:"
+    gini_line: "  &7基尼系数: %gini_colored% &7(评分: &b%gini_score_40%&7/40)"
+    gini_desc_line: "    &8└─ %gini_desc%"
+    concentration_header: "  &7财富集中度: (评分: &b%concentration_score_30%&7/30)"
+    top1_line: "    &8• &7Top 1%%: %top1_colored%%% &7财富"
+    top10_line: "    &8• &7Top 10%%: %top10_colored%%% &7财富"
+    distribution_header: "  &7分布均匀度: (评分: &b%distribution_score_30%&7/30)"
+    cv_line: "    &8• &7变异系数: %cv_colored%"
+    mean_line: "    &8• &7平均值: &f%mean%"
+    median_line: "    &8• &7中位数: &f%median%"
+    stddev_line: "    &8• &7标准差: &f%stddev%"
+    reco_header: "&e&l▸ 建议措施:"
+    reco:
+      state_excellent_keep: "  &8• &7经济状态优秀，继续保持当前政策"
+      minor_tune_tax: "  &8• &7可考虑微调税率以维持平衡"
+      gini_very_high_progressive: "  &8• &7基尼系数过高，建议加大累进税率"
+      tax_rich_more: "  &8• &7考虑对富裕玩家征收更高税率"
+      raise_high_income_tax_moderate: "  &8• &7适度提高高收入阶层的税率"
+      wealth_overly_concentrated: "  &8• &7财富过度集中于顶层，需要再分配机制"
+      special_tax_cap: "  &8• &7可设置财富上限或特别税"
+      concentration_high_moderate_regulation: "  &8• &7顶层财富集中度偏高，建议适度调控"
+      cv_very_high_strong_intervention: "  &8• &7财富分布极不均匀，需要强力干预"
+      welfare_support: "  &8• &7建议实施福利补贴或最低收入保障"
+      support_middle_class: "  &8• &7考虑增加中产阶级扶持政策"
+      healthy_maintain: "  &8• &7经济状态基本健康，维持现状即可"
+    sample_line: "&7样本数量: &f%player_count% &7名玩家"
+    level:
+      excellent: "优秀"
+      good: "良好"
+      moderate: "中等"
+      poor: "较差"
+      critical: "危急"
+      unknown: "未知"
+    gini_desc:
+      very_equal: "极度平等"
+      relatively_equal: "相对平等"
+      moderate_gap: "差距适中"
+      large_gap: "差距较大"
+      very_unequal: "极度不平等"
+
+  # trends
+  trends:
+    loading: "&7正在加载趋势..."
+    invalid_days: "&c天数必须在 1-365 之间"
+    no_data: "&c尚无历史快照数据，快照由系统自动生成，请稍后再试"
+    error: "&c获取趋势数据失败，请查看控制台日志"

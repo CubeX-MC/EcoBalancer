@@ -1,6 +1,10 @@
 org\cubexmc\ecobalancer\commands\CheckRecordsCommand$1.class
 org\cubexmc\ecobalancer\commands\PercentileCommand.class
+org\cubexmc\ecobalancer\utils\AnalysisFilters$ParseResult.class
+org\cubexmc\ecobalancer\utils\AnalysisFilters$PlayerEntry.class
+org\cubexmc\ecobalancer\utils\AnalysisFilters.class
 org\cubexmc\ecobalancer\metrics\Metrics$SingleLineChart.class
+org\cubexmc\ecobalancer\utils\PlaytimeUtils.class
 org\cubexmc\ecobalancer\commands\ConcentrationCommand$ConcentrationResult.class
 org\cubexmc\ecobalancer\commands\GiniCommand.class
 org\cubexmc\ecobalancer\commands\ImpactCommand.class
@@ -15,10 +19,12 @@ org\cubexmc\ecobalancer\EcoBalancer$1BatchRunnable.class
 org\cubexmc\ecobalancer\listeners\AdminLoginListener.class
 org\cubexmc\ecobalancer\utils\EconomicMetrics.class
 org\cubexmc\ecobalancer\commands\TaxReportCommand$TaxReportData.class
+org\cubexmc\ecobalancer\EcoBalancer$1PreScan.class
 org\cubexmc\ecobalancer\commands\ConcentrationCommand.class
 org\cubexmc\ecobalancer\metrics\Metrics.class
 org\cubexmc\ecobalancer\commands\CheckRecordsCommand.class
 org\cubexmc\ecobalancer\utils\FileUtils.class
+org\cubexmc\ecobalancer\utils\DatabaseUtils$SqlRunnable.class
 org\cubexmc\ecobalancer\commands\CheckRecordCommand.class
 org\cubexmc\ecobalancer\commands\UtilCommand.class
 org\cubexmc\ecobalancer\metrics\Metrics$AdvancedBarChart.class
@@ -31,6 +37,7 @@ org\cubexmc\ecobalancer\metrics\Metrics$CustomChart.class
 org\cubexmc\ecobalancer\utils\StatisticsUtils.class
 org\cubexmc\ecobalancer\metrics\Metrics$MetricsBase.class
 org\cubexmc\ecobalancer\metrics\Metrics$SimpleBarChart.class
+org\cubexmc\ecobalancer\EcoBalancer$MetricsSnapshot.class
 org\cubexmc\ecobalancer\metrics\Metrics$AdvancedPie.class
 org\cubexmc\ecobalancer\utils\DatabaseUtils$EconomicSnapshot.class
 org\cubexmc\ecobalancer\utils\PageUtils.class
@@ -41,9 +48,11 @@ org\cubexmc\ecobalancer\metrics\Metrics$DrilldownPie.class
 org\cubexmc\ecobalancer\utils\DatabaseUtils$OperationImpact.class
 org\cubexmc\ecobalancer\commands\DescripStatsCommand.class
 org\cubexmc\ecobalancer\metrics\Metrics$1.class
+org\cubexmc\ecobalancer\EcoBalancer$1.class
 org\cubexmc\ecobalancer\metrics\Metrics$JsonObjectBuilder.class
 org\cubexmc\ecobalancer\commands\HealthCommand$HealthScore.class
 org\cubexmc\ecobalancer\commands\TaxReportCommand.class
+org\cubexmc\ecobalancer\utils\AnalysisFilters$FilterCriteria.class
 org\cubexmc\ecobalancer\commands\CheckRecordsCommand$OperationRecord.class
 org\cubexmc\ecobalancer\metrics\Metrics$JsonObjectBuilder$JsonObject.class
 org\cubexmc\ecobalancer\utils\MessageUtils.class

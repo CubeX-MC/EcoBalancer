@@ -43,14 +43,7 @@
                     </execution>
                 </executions>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>2.3.1</version>
-                <configuration>
-                    <outputDirectory>C:\Users\Angus\Desktop\MC server\test server\plugins</outputDirectory>
-                </configuration>
-            </plugin>
+            <!-- Use shade plugin output as the deployable JAR; avoid producing a plain JAR without dependencies -->
         </plugins>
         <resources>
             <resource>
@@ -102,7 +95,6 @@
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
             <version>3.36.0.3</version>
-            <scope>provided</scope>
         </dependency>
     </dependencies>
 

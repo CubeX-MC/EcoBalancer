@@ -35,6 +35,12 @@ permissions:
       ecobalancer.command.checkrecords: true
       ecobalancer.command.checkrecord: true
       ecobalancer.command.restore: true
+      ecobalancer.command.gini: true
+      ecobalancer.command.concentration: true
+      ecobalancer.command.report: true
+      ecobalancer.command.health: true
+      ecobalancer.command.impact: true
+      ecobalancer.command.trends: true
   ecobalancer.command.checkall:
     description: Allows use of /ecobal checkall command
     default: op
@@ -62,8 +68,29 @@ permissions:
   ecobalancer.command.restore:
     description: Allows use of /ecobal restore command
     default: op
+  ecobalancer.command.gini:
+    description: Allows use of /ecobal gini command
+    default: op
+  ecobalancer.command.concentration:
+    description: Allows use of /ecobal concentration command
+    default: op
+  ecobalancer.command.report:
+    description: Allows use of /ecobal report command
+    default: op
+  ecobalancer.command.health:
+    description: Allows use of /ecobal health command
+    default: op
+  ecobalancer.command.impact:
+    description: Allows use of /ecobal impact command
+    default: op
+  ecobalancer.command.trends:
+    description: Allows use of /ecobal trends command
+    default: op
   ecobalancer.*:
     description: Grants all EcoBalancer permissions
     default: op
     children:
       ecobalancer.command.ecobal: true
+  ecobalancer.admin:
+    description: Administrative access to EcoBalancer notifications and actions
+    default: op

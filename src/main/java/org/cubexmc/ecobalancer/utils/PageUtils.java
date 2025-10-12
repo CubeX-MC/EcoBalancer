@@ -160,45 +160,7 @@ public class PageUtils {
         
         // 发送导航组件
         if (navigationMessagePath != null) {
-            Map<String, String> navPlaceholders = new HashMap<>();
-            navPlaceholders.put("page", String.valueOf(currentPage));
-            navPlaceholders.put("total", String.valueOf(totalPages));
-            
-            if (extraPlaceholders != null) {
-                navPlaceholders.putAll(extraPlaceholders);
-            }
-            
-            TextComponent prevPage = new TextComponent();
-            TextComponent nextPage = new TextComponent();
-            
-            if (currentPage > 1) {
-                prevPage.setText(MessageUtils.formatMessage(langConfig, "messages.prev_page", null, prefix));
-                prevPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, 
-                        String.format(commandFormat, currentPage - 1)));
-            } else {
-                prevPage.setText(MessageUtils.formatMessage(langConfig, "messages.no_prev_page", null, prefix));
-            }
-            
-            if (currentPage < totalPages) {
-                nextPage.setText(MessageUtils.formatMessage(langConfig, "messages.next_page", null, prefix));
-                nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, 
-                        String.format(commandFormat, currentPage + 1)));
-            } else {
-                nextPage.setText(MessageUtils.formatMessage(langConfig, "messages.no_next_page", null, prefix));
-            }
-            
-            navPlaceholders.put("prev", prevPage.toPlainText());
-            navPlaceholders.put("next", nextPage.toPlainText());
-            
-            TextComponent navigationComponent = MessageUtils.formatComponent(
-                    langConfig, 
-                    navigationMessagePath, 
-                    navPlaceholders, 
-                    new String[]{"prev", "next"}, 
-                    new TextComponent[]{prevPage, nextPage},
-                    prefix
-            );
-            
+            TextComponent navigationComponent = createPageNavigation(langConfig, currentPage, totalPages, commandFormat, prefix);
             sender.spigot().sendMessage(navigationComponent);
         }
         

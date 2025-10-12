@@ -1,18 +1,18 @@
 package org.cubexmc.ecobalancer.commands;
 
-import net.md_5.bungee.api.chat.ClickEvent;
-import net.md_5.bungee.api.chat.TextComponent;
-import org.bukkit.Bukkit;
+// removed unused ClickEvent/TextComponent imports
+// removed unused Bukkit import
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
-import org.bukkit.configuration.file.FileConfiguration;
+// removed unused FileConfiguration import
 import org.bukkit.util.StringUtil;
 import org.cubexmc.ecobalancer.EcoBalancer;
 import org.cubexmc.ecobalancer.utils.MessageUtils;
 import org.cubexmc.ecobalancer.utils.PageUtils;
 import org.cubexmc.ecobalancer.utils.VaultUtils;
+import org.cubexmc.ecobalancer.utils.AnalysisFilters;
 
 import java.util.*;
 
@@ -25,78 +25,30 @@ public class IntervalCommand implements TabExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        // New filter-style parsing: tokens d: p: l: u: lr: ur: + optional [alphabet|balance] and [page]
+        AnalysisFilters.ParseResult pr = AnalysisFilters.parse(args);
         String sortBy = "alphabet";
-        double low = Double.NEGATIVE_INFINITY;
-        double up = Double.POSITIVE_INFINITY;
         int page = 1;
-
-        // 解析命令参数
-        if (args.length > 0) {
-            if (args[0].equalsIgnoreCase("alphabet") || args[0].equalsIgnoreCase("balance")) {
-                sortBy = args[0].toLowerCase();
-                if (args.length > 1) {
-                    try {
-                        low = args[1].equals("_") ? Double.NEGATIVE_INFINITY : Double.parseDouble(args[1]);
-                        if (args.length > 2) {
-                            try {
-                                up = args[2].equals("_") ? Double.POSITIVE_INFINITY : Double.parseDouble(args[2]);
-                                if (args.length > 3) {
-                                    try {
-                                        page = Integer.parseInt(args[3]);
-                                    } catch (NumberFormatException e) {
-                                        sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.invalid_page", null, plugin.getMessagePrefix()));
-                                        return true;
-                                    }
-                                }
-                            } catch (NumberFormatException e) {
-                                sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_invalid_up", null, plugin.getMessagePrefix()));
-                                return true;
-                            }
-                        }
-                    } catch (NumberFormatException e) {
-                        sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_invalid_low", null, plugin.getMessagePrefix()));
+        // Remaining args: [sortBy] [page]
+        if (!pr.remainingArgs.isEmpty()) {
+            String a0 = pr.remainingArgs.get(0);
+            if ("alphabet".equalsIgnoreCase(a0) || "balance".equalsIgnoreCase(a0)) {
+                sortBy = a0.toLowerCase();
+                if (pr.remainingArgs.size() > 1) {
+                    try { page = Integer.parseInt(pr.remainingArgs.get(1)); }
+                    catch (NumberFormatException e) {
+                        sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.invalid_page", null, plugin.getMessagePrefix()));
                         return true;
                     }
                 }
             } else {
-                try {
-                    low = args[0].equals("_") ? Double.NEGATIVE_INFINITY : Double.parseDouble(args[0]);
-                    if (args.length > 1) {
-                        try {
-                            up = args[1].equals("_") ? Double.POSITIVE_INFINITY : Double.parseDouble(args[1]);
-                            if (args.length > 2) {
-                                try {
-                                    page = Integer.parseInt(args[2]);
-                                } catch (NumberFormatException e) {
-                                    sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.invalid_page", null, plugin.getMessagePrefix()));
-                                    return true;
-                                }
-                            }
-                        } catch (NumberFormatException e) {
-                            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_invalid_up", null, plugin.getMessagePrefix()));
-                            return true;
-                        }
-                    }
-                } catch (NumberFormatException e) {
-                    sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_invalid_low", null, plugin.getMessagePrefix()));
-                    return true;
-                }
+                try { page = Integer.parseInt(a0); }
+                catch (NumberFormatException ignored) {}
             }
         }
 
         // 收集符合条件的玩家
-        OfflinePlayer[] players = Bukkit.getOfflinePlayers();
-        List<OfflinePlayer> matchedPlayers = new ArrayList<>();
-
-        sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_collecting", null, plugin.getMessagePrefix()));
-        for (OfflinePlayer player : players) {
-            if (VaultUtils.hasAccount(player)) {
-                double balance = VaultUtils.getBalance(player);
-                if (balance >= low && balance <= up) {
-                    matchedPlayers.add(player);
-                }
-            }
-        }
+        List<OfflinePlayer> matchedPlayers = AnalysisFilters.collectFilteredPlayers(pr.criteria, plugin.getConfig().getString("stats-world", ""));
 
         // 排序玩家列表
         sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_sorting", null, plugin.getMessagePrefix()));
@@ -117,14 +69,18 @@ public class IntervalCommand implements TabExecutor {
 
         // 显示页头
         Map<String, String> headerPlaceholders = new HashMap<>();
-        headerPlaceholders.put("low", String.format("%.2f", low));
-        headerPlaceholders.put("up", String.format("%.2f", up));
+        double low = pr.criteria.minBalance == null ? Double.NEGATIVE_INFINITY : pr.criteria.minBalance;
+        double up = pr.criteria.maxBalance == null ? Double.POSITIVE_INFINITY : pr.criteria.maxBalance;
+        headerPlaceholders.put("low", low == Double.NEGATIVE_INFINITY ? "∞" : String.format("%.2f", low));
+        headerPlaceholders.put("up", up == Double.POSITIVE_INFINITY ? "∞" : String.format("%.2f", up));
         sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.interval_header", headerPlaceholders, plugin.getMessagePrefix()));
 
-        // 使用PageUtils渲染玩家列表
-        final String commandFormat = "/interval " + sortBy + " " + low + " " + up + " %d";
-        final double finalLow = low;
-        final double finalUp = up;
+        // 使用PageUtils渲染玩家列表（保留筛选 token，便于翻页）
+        StringBuilder cmdFmt = new StringBuilder("/interval");
+        for (String tok : args) { if (tok.contains(":")) cmdFmt.append(' ').append(tok); }
+        cmdFmt.append(' ').append(sortBy).append(' ').append("%d");
+        final String commandFormat = cmdFmt.toString();
+        // finalLow/finalUp no longer needed after header formatting
         
         PageUtils.renderPagination(
             sender,

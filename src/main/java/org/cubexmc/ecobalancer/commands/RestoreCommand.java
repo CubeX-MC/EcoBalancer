@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.cubexmc.ecobalancer.utils.DatabaseUtils;
+import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
 public class RestoreCommand implements CommandExecutor {
     private final EcoBalancer plugin;
@@ -37,66 +38,88 @@ public class RestoreCommand implements CommandExecutor {
 
     // 连接由 DatabaseUtils 统一管理
 
-    // 从数据库中查询对应的操作
-    try (Connection connection = DatabaseUtils.getConnection(plugin)) {
-            try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM operations WHERE id = ?")) {
-                preparedStatement.setInt(1, operationId);
-                try (ResultSet resultSet = preparedStatement.executeQuery()) {
-                    if (resultSet.next()) {
-                        boolean isCheckAll = resultSet.getBoolean("is_checkall");
-
-                        if (isCheckAll) {
+        // 异步读取数据库，主线程回放经济变更
+        SchedulerUtils.runTaskAsync(plugin, () -> {
+            try (Connection connection = DatabaseUtils.getConnection(plugin)) {
+                long targetTs = 0L;
+                try (PreparedStatement ps = connection.prepareStatement("SELECT timestamp, is_restored FROM operations WHERE id = ?")) {
+                    ps.setInt(1, operationId);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            SchedulerUtils.runTask(plugin, () -> sender.sendMessage(plugin.getFormattedMessage("messages.restore_operation_not_found", null)));
+                            return;
+                        }
+                        boolean already = rs.getBoolean("is_restored");
+                        if (already) {
                             Map<String, String> placeholders = new HashMap<>();
                             placeholders.put("operation_id", String.valueOf(operationId));
-                            // 提示正在恢复所有玩家的余额
-                            sender.sendMessage(plugin.getFormattedMessage("messages.restoring_all", placeholders));
-                            // 恢复所有玩家的余额
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? AND deduction != 0.0")) {
-                                selectStatement.setInt(1, operationId);
-                                try (ResultSet allRecords = selectStatement.executeQuery()) {
-                                    while (allRecords.next()) {
-                                        String playerUUID = allRecords.getString("player");
-                                        double deduction = allRecords.getDouble("deduction");
-                                        OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(playerUUID));
-                                        EcoBalancer.getEconomy().depositPlayer(offlinePlayer, deduction);
-                                    }
-                                }
-                            }
-                            sender.sendMessage(plugin.getFormattedMessage("messages.restored_all", placeholders));
-                        } else {
-                            // 只恢复单个玩家的余额
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ?")) {
-                                selectStatement.setInt(1, operationId);
-                                try (ResultSet record = selectStatement.executeQuery()) {
-                                    if (record.next()) {
-                                        String playerUUID = record.getString("player");
-                                        double deduction = record.getDouble("deduction");
-                                        OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(playerUUID));
-                                        EcoBalancer.getEconomy().depositPlayer(offlinePlayer, deduction);
-                                        Map<String, String> placeholders = new HashMap<>();
-                                        placeholders.put("operation_id", String.valueOf(operationId));
-                                        placeholders.put("player", offlinePlayer.getName());
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.restored_player", placeholders));
-                                    } else {
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.restore_not_found", null));
-                                    }
-                                }
-                            }
+                            SchedulerUtils.runTask(plugin, () -> sender.sendMessage(plugin.getFormattedMessage("messages.restore_already_restored", placeholders)));
+                            return;
                         }
-                        // 在恢复操作后,更新操作的 is_restored 字段
-                        try (PreparedStatement updateStatement = connection.prepareStatement("UPDATE operations SET is_restored = 1 WHERE id = ?")) {
-                            updateStatement.setInt(1, operationId);
-                            updateStatement.executeUpdate();
-                        }
-                    } else {
-                        sender.sendMessage(plugin.getFormattedMessage("messages.restore_operation_not_found", null));
+                        targetTs = rs.getLong("timestamp");
                     }
                 }
+
+                try (PreparedStatement psOps = connection.prepareStatement(
+                        "SELECT id FROM operations WHERE timestamp >= ? AND is_restored = 0 ORDER BY timestamp DESC, id DESC")) {
+                    psOps.setLong(1, targetTs);
+                    try (ResultSet rsOps = psOps.executeQuery()) {
+                        int restoredOps = 0;
+                        while (rsOps.next()) {
+                            int opId = rsOps.getInt("id");
+                            // 收集需要回滚的条目
+                            java.util.List<java.util.AbstractMap.SimpleEntry<UUID, Double>> entries = new java.util.ArrayList<>();
+                            try (PreparedStatement psRec = connection.prepareStatement(
+                                    "SELECT player, deduction FROM records WHERE operation_id = ? AND deduction != 0.0")) {
+                                psRec.setInt(1, opId);
+                                try (ResultSet rsRec = psRec.executeQuery()) {
+                                    while (rsRec.next()) {
+                                        String playerUUID = rsRec.getString("player");
+                                        double deduction = rsRec.getDouble("deduction");
+                                        entries.add(new java.util.AbstractMap.SimpleEntry<>(UUID.fromString(playerUUID), deduction));
+                                    }
+                                }
+                            }
+
+                            // 在主线程按批次应用经济变更
+                            final int batch = 200;
+                            for (int i = 0; i < entries.size(); i += batch) {
+                                final int start = i;
+                                final int end = Math.min(i + batch, entries.size());
+                                SchedulerUtils.runTask(plugin, () -> {
+                                    for (int j = start; j < end; j++) {
+                                        UUID uid = entries.get(j).getKey();
+                                        double deduction = entries.get(j).getValue();
+                                        OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(uid);
+                                        if (deduction > 0) {
+                                            EcoBalancer.getEconomy().depositPlayer(offlinePlayer, deduction);
+                                        } else if (deduction < 0) {
+                                            EcoBalancer.getEconomy().withdrawPlayer(offlinePlayer, -deduction);
+                                        }
+                                    }
+                                });
+                            }
+
+                            // 标记该操作为已恢复
+                            try (PreparedStatement psUpd = connection.prepareStatement(
+                                    "UPDATE operations SET is_restored = 1 WHERE id = ?")) {
+                                psUpd.setInt(1, opId);
+                                psUpd.executeUpdate();
+                            }
+                            restoredOps++;
+                        }
+
+                        int finalRestoredOps = restoredOps;
+                        Map<String, String> placeholders = new HashMap<>();
+                        placeholders.put("operation_id", String.valueOf(operationId));
+                        placeholders.put("count", String.valueOf(finalRestoredOps));
+                        SchedulerUtils.runTask(plugin, () -> sender.sendMessage(plugin.getFormattedMessage("messages.restored_range", placeholders)));
+                    }
+                }
+            } catch (SQLException e) {
+                SchedulerUtils.runTask(plugin, () -> sender.sendMessage(plugin.getFormattedMessage("messages.restore_error", new HashMap<>())));
             }
-        } catch (SQLException e) {
-            Map<String, String> errorPlaceholders = new HashMap<>();
-            sender.sendMessage(plugin.getFormattedMessage("messages.restore_error", errorPlaceholders));
-        }
+        });
 
         return true;
     }

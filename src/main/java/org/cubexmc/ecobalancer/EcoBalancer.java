@@ -4,7 +4,6 @@ import net.md_5.bungee.api.chat.*;
 import net.milkbowl.vault.economy.Economy;
 import org.apache.commons.lang.StringUtils;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -33,6 +32,10 @@ import org.cubexmc.ecobalancer.listeners.AdminLoginListener;
 import org.cubexmc.ecobalancer.metrics.Metrics;
 import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 import org.cubexmc.ecobalancer.utils.DatabaseUtils;
+import org.cubexmc.ecobalancer.utils.MessageUtils;
+import org.cubexmc.ecobalancer.utils.EconomicMetrics;
+import org.cubexmc.ecobalancer.utils.PlaytimeUtils;
+import org.cubexmc.ecobalancer.utils.AnalysisFilters;
 
 @SuppressWarnings("deprecation")
 public final class EcoBalancer extends JavaPlugin {
@@ -41,6 +44,7 @@ public final class EcoBalancer extends JavaPlugin {
     private int inactiveDaysToDeduct;
     private TreeMap<Integer, Double> taxBrackets = new TreeMap<>();
     private int inactiveDaysToClear;
+    private boolean onlyOfflinePlayers;
     private FileHandler fileHandler;
     private Logger fileLogger = Logger.getLogger("EcoBalancerFileLogger");
     private int recordRetentionDays;
@@ -104,6 +108,13 @@ public final class EcoBalancer extends JavaPlugin {
             return;
         }
 
+        // Initialize VaultUtils for modules that reference Vault via utility class
+        try {
+            org.cubexmc.ecobalancer.utils.VaultUtils.setupEconomy(this);
+        } catch (Throwable ignored) {
+            // keep running as core econ is already initialized via this.econ
+        }
+
         saveDefaultConfig();  // 保存默认配置
         loadConfiguration();  // 加载配置
 
@@ -156,11 +167,17 @@ public final class EcoBalancer extends JavaPlugin {
         getLogger().info("EcoBalancer enabled!");
         
         // 告知用户Folia支持状态
-        if (checkFoliaSupport()) {
+        if (SchedulerUtils.isFolia()) {
             getLogger().info("Folia support is enabled!");
         } else {
             getLogger().info("Running on standard Bukkit/Spigot server");
         }
+
+        // 异步预加载 vanilla 统计数据（玩家在线时长）供 p:N 过滤使用
+        try {
+            String statsWorld = getConfig().getString("stats-world", "");
+            PlaytimeUtils.loadAllAsync(this, statsWorld);
+        } catch (Throwable ignored) {}
     }
 
     private void displayAsciiArt() {
@@ -229,10 +246,14 @@ public final class EcoBalancer extends JavaPlugin {
         checkTime = getConfig().getString("check-time", "01:00");  // 读取配置
         // Determine which scheduling method to use based on the type
         scheduleCheck(calculateNextDelay());
+        // Schedule economic snapshot generation daily at configured time
+        scheduleDailySnapshot();
         // deduction setting
         deductBasedOnTime = getConfig().getBoolean("deduct-based-on-time", false);
         inactiveDaysToDeduct = getConfig().getInt("inactive-days-to-deduct", 50);
         inactiveDaysToClear = getConfig().getInt("inactive-days-to-clear", 500);
+        // Whether to process only offline players (default true)
+        onlyOfflinePlayers = getConfig().getBoolean("only-offline-players", true);
         List<Map<?, ?>> rawTaxBrackets = getConfig().getMapList("tax-brackets");
         taxAccount = getConfig().getBoolean("tax-account", false);
         taxAccountName = taxAccount ? getConfig().getString("tax-account-name", "tax") : null;
@@ -241,21 +262,29 @@ public final class EcoBalancer extends JavaPlugin {
         taxBrackets.clear();
         boolean usePercentileThresholds = getConfig().getBoolean("percentile-thresholds", false);
         if (!usePercentileThresholds) {
-            // Standard: thresholds are absolute balances
+            // Standard: thresholds are LOWER BOUNDS (≥ threshold)
             for (Map<?, ?> bracket : rawTaxBrackets) {
                 Object thObj = bracket.get("threshold");
-                int threshold = (thObj == null) ? Integer.MAX_VALUE : ((Number) thObj).intValue();
+                if (thObj == null) {
+                    getLogger().warning("Ignoring tax bracket with null threshold in lower-bound mode. Please set an explicit lower bound.");
+                    continue;
+                }
+                int threshold = ((Number) thObj).intValue();
                 Double rate = ((Number) bracket.get("rate")).doubleValue();
                 taxBrackets.put(threshold, rate);
             }
         } else {
-            // Percentile mode: thresholds represent 0-100 percentiles of current balance distribution
+            // Percentile mode: thresholds represent 0-100 percentiles; convert to LOWER BOUNDS of balance
             List<Double> balances = collectAllBalances();
             if (balances.isEmpty()) {
                 getLogger().warning("percentile-thresholds enabled but no balances found; falling back to absolute thresholds.");
                 for (Map<?, ?> bracket : rawTaxBrackets) {
                     Object thObj = bracket.get("threshold");
-                    int threshold = (thObj == null) ? Integer.MAX_VALUE : ((Number) thObj).intValue();
+                    if (thObj == null) {
+                        getLogger().warning("Ignoring tax bracket with null threshold in lower-bound mode. Please set an explicit lower bound.");
+                        continue;
+                    }
+                    int threshold = ((Number) thObj).intValue();
                     Double rate = ((Number) bracket.get("rate")).doubleValue();
                     taxBrackets.put(threshold, rate);
                 }
@@ -266,28 +295,25 @@ public final class EcoBalancer extends JavaPlugin {
                     Object thObj = bracket.get("threshold");
                     int thresholdAbs;
                     if (thObj == null) {
-                        thresholdAbs = Integer.MAX_VALUE;
+                        getLogger().warning("Ignoring tax bracket with null threshold in lower-bound percentile mode. Please set an explicit lower bound percentile.");
+                        continue;
                     } else {
                         double p = ((Number) thObj).doubleValue();
                         // Clamp percentile to [0,100]
                         if (p < 0) p = 0; if (p > 100) p = 100;
                         double value = getPercentileValue(balances, p);
-                        // Use ceil as an exclusive upper bound in int domain
-                        if (value >= Integer.MAX_VALUE) {
-                            thresholdAbs = Integer.MAX_VALUE;
-                        } else if (value <= Integer.MIN_VALUE) {
-                            thresholdAbs = Integer.MIN_VALUE + 1; // keep ordering sane
-                        } else {
-                            thresholdAbs = (int) Math.ceil(value);
-                        }
+                        // Use floor as inclusive LOWER BOUND in int domain
+                        if (value >= Integer.MAX_VALUE) thresholdAbs = Integer.MAX_VALUE;
+                        else if (value <= Integer.MIN_VALUE) thresholdAbs = Integer.MIN_VALUE;
+                        else thresholdAbs = (int) Math.floor(value);
                     }
                     Double rate = ((Number) bracket.get("rate")).doubleValue();
                     taxBrackets.put(thresholdAbs, rate);
                 }
 
-                // Log computed absolute thresholds for visibility
+                // Log computed lower-bound thresholds for visibility
                 try {
-                    StringBuilder sb = new StringBuilder("Computed absolute thresholds from percentiles: ");
+                    StringBuilder sb = new StringBuilder("Computed lower-bound thresholds from percentiles: ");
                     for (Map.Entry<Integer, Double> e : taxBrackets.entrySet()) {
                         sb.append("[").append(e.getKey() == Integer.MAX_VALUE ? "MAX" : e.getKey()).append(": ")
                           .append(e.getValue()).append("] ");
@@ -310,71 +336,11 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     public String getFormattedMessage(String path, Map<String, String> placeholders) {
-        if (placeholders == null) {
-            placeholders = new HashMap<>();
-        }
-        placeholders.put("prefix", messagePrefix);
-        String message = langConfig.getString(path, "Message not found!");
-        if (placeholders != null) {
-            for (Map.Entry<String, String> entry : placeholders.entrySet()) {
-                message = message.replace("%" + entry.getKey() + "%", entry.getValue());
-            }
-        }
-
-        return ChatColor.translateAlternateColorCodes('&', message);
+        return MessageUtils.formatMessage(langConfig, path, placeholders, messagePrefix);
     }
 
     public TextComponent getFormattedMessage(String path, Map<String, String> placeholders, String[] clickablePlaceholders, TextComponent[] clickableComponents) {
-        if (placeholders == null) {
-            placeholders = new HashMap<>();
-        }
-        placeholders.put("prefix", messagePrefix);
-
-        String messageTemplate = langConfig.getString(path, "Message not found!");
-
-        // 初始化一个基础的TextComponent用于最终消息
-        TextComponent finalMessage = new TextComponent("");
-
-        // 替换除clickablePlaceholders外的所有占位符
-        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
-            if (!Arrays.asList(clickablePlaceholders).contains(entry.getKey())) {
-                messageTemplate = messageTemplate.replace("%" + entry.getKey() + "%", entry.getValue());
-            }
-        }
-
-        // 分割消息模板
-        String[] messageParts = messageTemplate.split("%", -1);
-
-        for (int i = 0; i < messageParts.length; i++) {
-            String part = messageParts[i];
-
-            // 检查这部分是否匹配任何可点击的占位符
-            int placeholderIndex = -1;
-            for (int j = 0; j < clickablePlaceholders.length; j++) {
-                if (part.startsWith(clickablePlaceholders[j])) {
-                    placeholderIndex = j;
-                    break;
-                }
-            }
-
-            if (placeholderIndex != -1) {
-                // 如果这部分以一个可点击的占位符开始,添加相应的可点击组件
-                finalMessage.addExtra(clickableComponents[placeholderIndex]);
-
-                // 如果占位符后还有文本,作为普通文本添加
-                String remainingText = part.substring(clickablePlaceholders[placeholderIndex].length());
-                if (!remainingText.isEmpty()) {
-                    finalMessage.addExtra(new TextComponent(ChatColor.translateAlternateColorCodes('&', remainingText)));
-                }
-            } else {
-                // 如果这部分不是可点击的占位符,作为普通文本添加
-                if (!part.isEmpty()) {
-                    finalMessage.addExtra(new TextComponent(ChatColor.translateAlternateColorCodes('&', part)));
-                }
-            }
-        }
-
-        return finalMessage;
+        return MessageUtils.formatComponent(langConfig, path, placeholders, clickablePlaceholders, clickableComponents, messagePrefix);
     }
 
     /**
@@ -463,7 +429,8 @@ public final class EcoBalancer extends JavaPlugin {
 
         if (taxAccount && player.getName().equals(taxAccountName)) return;
 
-        Map.Entry<Integer, Double> entry = taxBrackets.higherEntry((int) balance);
+        // Brackets are modeled as LOWER BOUNDS; choose the largest threshold ≤ balance
+        Map.Entry<Integer, Double> entry = taxBrackets.floorEntry((int) balance);
         if (entry != null) {
             deductionRate = entry.getValue();
         }
@@ -476,6 +443,11 @@ public final class EcoBalancer extends JavaPlugin {
         placeholders.put("player", player.getName());
         placeholders.put("balance", String.format("%.2f", balance));
         placeholders.put("days_offline", String.valueOf(daysOffline));
+
+        // Respect offline-only policy if enabled
+        if (onlyOfflinePlayers && player.isOnline()) {
+            return; // Skip online players when policy is enabled
+        }
 
         // fix all negative balance
         if (balance < 0.0) {
@@ -514,6 +486,9 @@ public final class EcoBalancer extends JavaPlugin {
 
         double newBalance = econ.getBalance(player);
         double deduction = oldBalance - newBalance;
+        if (!getConfig().getBoolean("record-zero-deduction", true) && Math.abs(deduction) < 1e-9) {
+            return;
+        }
         saveRecord(player, oldBalance, newBalance, deduction, isCheckAll, operationId);
     }
 
@@ -636,57 +611,76 @@ public final class EcoBalancer extends JavaPlugin {
         OfflinePlayer target = Bukkit.getOfflinePlayer(playerName);
         if (target.hasPlayedBefore()) {
             long currentTime = System.currentTimeMillis();
-            final int operationId = getNextOperationId(false);  // false for checkPlayer
-            checkBalance(sender, currentTime, target, true, false, operationId);
+            // Batched capture of metrics before the operation
+            computeMetricsSnapshotBatched(sender, 200, 1L, before -> {
+                final int operationId = getNextOperationId(false);  // false for checkPlayer
+                checkBalance(sender, currentTime, target, true, false, operationId);
+                // Persist impact after a short delay to allow async record saves to complete
+                saveImpactAfterDelay(operationId, before, 60L);
+            });
         } else {
             sender.sendMessage(getFormattedMessage("messages.player_not_found", null));
         }
     }
 
     public void checkAll(CommandSender sender) {
+        checkAll(sender, null);
+    }
+
+    public void checkAll(CommandSender sender, AnalysisFilters.FilterCriteria criteria) {
         final long currentTime = System.currentTimeMillis();
-        final OfflinePlayer[] players = Bukkit.getOfflinePlayers();
+        // Resolve filters: from parameter or from config tax-filters
+        if (criteria == null) {
+            String filterStr = getConfig().getString("tax-filters", "");
+            if (filterStr != null && !filterStr.trim().isEmpty()) {
+                criteria = AnalysisFilters.parse(filterStr.trim().split("\\s+")).criteria;
+            }
+        }
+        final String statsWorld = getConfig().getString("stats-world", "");
+        final List<OfflinePlayer> players = (criteria == null)
+                ? Arrays.asList(Bukkit.getOfflinePlayers())
+                : AnalysisFilters.collectFilteredPlayers(criteria, statsWorld);
         final int batchSize = 100; // Number of players to process at once
         final int delay = 10; // Delay in ticks between batches (20 ticks = 1 second)
 
-        final int operationId = getNextOperationId(true);
+        // Batched compute of the "before" snapshot, then proceed with taxation batches
+        computeMetricsSnapshotBatched(sender, 200, 1L, before -> {
+            final int operationId = getNextOperationId(true);
 
-        class BatchRunnable implements Runnable {
-            private int index = 0;
+            class BatchRunnable implements Runnable {
+                private int index = 0;
 
-            @Override
-            public void run() {
-                int start = index;
-                int end = Math.min(index + batchSize, players.length);
-                for (int i = index; i < end; i++) {
-                    OfflinePlayer player = players[i];
-                    checkBalance(null, currentTime, player, false, true, operationId);
-                }
-                index += batchSize;
+                @Override
+                public void run() {
+                    int start = index;
+                    int end = Math.min(index + batchSize, players.size());
+                    for (int i = index; i < end; i++) {
+                        OfflinePlayer player = players.get(i);
+                        checkBalance(null, currentTime, player, false, true, operationId);
+                    }
+                    index += batchSize;
 
-                Map<String, String> placeholders = new HashMap<>();
-                placeholders.put("start", Integer.toString(start));
-                placeholders.put("end", Integer.toString(end));
-                placeholders.put("batch", Integer.toString(end - start));
-                placeholders.put("total_players", Integer.toString(players.length));
+                    Map<String, String> placeholders = new HashMap<>();
+                    placeholders.put("start", Integer.toString(start));
+                    placeholders.put("end", Integer.toString(end));
+                    placeholders.put("batch", Integer.toString(end - start));
+                    placeholders.put("total_players", Integer.toString(players.size()));
 
-                sendMessage(sender, "messages.players_processing", placeholders, true);
-                if (index < players.length) {
-                    // Schedule next batch
-                    SchedulerUtils.runTaskLaterAsync(EcoBalancer.this, this, delay);
-                } else {
-                    // All players have been processed, notify the sender
-                    // Send a message to the sender after each batch
-                    calculateTotalDeduction(operationId);
-                    SchedulerUtils.runTask(EcoBalancer.this, () -> {
-                        sendMessage(sender, "messages.all_players_processed", null, true);
-                    });
+                    sendMessage(sender, "messages.players_processing", placeholders, true);
+                    if (index < players.size()) {
+                        SchedulerUtils.runTaskLater(EcoBalancer.this, this, delay);
+                    } else {
+                        calculateTotalDeduction(operationId);
+                        SchedulerUtils.runTask(EcoBalancer.this, () -> {
+                            sendMessage(sender, "messages.all_players_processed", null, true);
+                        });
+                        saveImpactAfterDelay(operationId, before, 100L);
+                    }
                 }
             }
-        }
 
-        // Start the first batch
-        SchedulerUtils.runTaskAsync(this, new BatchRunnable());
+            SchedulerUtils.runTask(EcoBalancer.this, new BatchRunnable());
+        });
     }
 
     private void calculateTotalDeduction(int operationId) {
@@ -698,69 +692,66 @@ public final class EcoBalancer extends JavaPlugin {
         return DatabaseUtils.getNextOperationId(this, isCheckAll, getLogger());
     }
 
-    public void generateHistogram(CommandSender sender, int numBars, double low, double up) {
+    public void generateHistogramFromBalances(CommandSender sender, int numBars, List<Double> balances, String[] originalArgs) {
 
         sender.sendMessage(getFormattedMessage("messages.stats_hist_drawing", null));
-        OfflinePlayer[] players = Bukkit.getOfflinePlayers();
-        List<Double> balances = new ArrayList<>();
-
-        for (OfflinePlayer player : players) {
-            if (econ.hasAccount(player)) {
-                double balance = econ.getBalance(player);
-                if (balance >= low && balance <= up) {
-                    balances.add(balance);
-                }
-            }
-        }
+        if (balances == null) balances = new ArrayList<>();
 
         double min = balances.stream().min(Double::compareTo).orElse(0.0);
         double max = balances.stream().max(Double::compareTo).orElse(0.0);
         double range = max - min;
-        double barWidth = range / numBars;
+        if (range <= 0) range = 1.0;
+        double barWidth = range / Math.max(1, numBars);
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("min", String.format("%.2f", min));
         placeholders.put("max", String.format("%.2f", max));
         sender.sendMessage(getFormattedMessage("messages.stats_min_max", placeholders));
 
-        int[] histogram = new int[numBars];
+        int[] histogram = new int[Math.max(1, numBars)];
         for (double balance : balances) {
             int barIndex = (int) ((balance - min) / barWidth);
-            if (barIndex == numBars) {
-                barIndex--;
-            }
+            if (barIndex < 0) barIndex = 0;
+            if (barIndex >= histogram.length) barIndex = histogram.length - 1;
             histogram[barIndex]++;
         }
 
-        int maxBarLength = 100; // 可以根据需要调整这个值
+        int maxBarLength = 100;
         int maxFrequency = Arrays.stream(histogram).max().orElse(0);
 
         sender.sendMessage(getFormattedMessage("messages.stats_hist_header", null));
-        for (int i = 0; i < numBars; i++) {
+
+        // Build filter token string for /ecobal interval
+        StringBuilder base = new StringBuilder("/ecobal interval");
+        if (originalArgs != null) {
+            for (String tok : originalArgs) {
+                if (tok != null && tok.contains(":")) base.append(' ').append(tok);
+            }
+        }
+
+        for (int i = 0; i < histogram.length; i++) {
             double lowerBound = min + i * barWidth;
             double upperBound = lowerBound + barWidth;
-            int barLength = (int) (((double) histogram[i] / maxFrequency) * maxBarLength);
+            int barLength = (maxFrequency > 0) ? (int) (((double) histogram[i] / maxFrequency) * maxBarLength) : 0;
             String bar = "§a" + StringUtils.repeat("▏", barLength) + "§r";
-
-            // 创建一个TextComponent作为可点击的条
 
             Map<String, String> intervalPlaceholders = new HashMap<>();
             intervalPlaceholders.put("bar", bar);
             intervalPlaceholders.put("frequency", Integer.toString(histogram[i]));
-            intervalPlaceholders.put("low", formatNumber(lowerBound));
-            intervalPlaceholders.put("up", formatNumber(upperBound));
+            intervalPlaceholders.put("low", EconomicMetrics.formatLargeNumber(lowerBound));
+            intervalPlaceholders.put("up", EconomicMetrics.formatLargeNumber(upperBound));
 
             TextComponent clickableBar = new TextComponent(bar);
-            clickableBar.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/interval balance " + lowerBound + " " + upperBound));
+            String cmd = base.toString() + " l:" + String.format(java.util.Locale.ROOT, "%.6f", lowerBound) + " u:" + String.format(java.util.Locale.ROOT, "%.6f", upperBound) + " balance";
+            clickableBar.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd));
             clickableBar.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder(getFormattedMessage("messages.stats_check_interval", intervalPlaceholders)).create()));
 
             TextComponent message = getFormattedMessage("messages.stats_bar", intervalPlaceholders, new String[]{"bar"}, new TextComponent[]{clickableBar});
             sender.spigot().sendMessage(message);
         }
 
-        // Calculate and print additional statistics
-        double mean = balances.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-        double median = calculateMedian(balances);
-        double standardDeviation = calculateStandardDeviation(balances, mean);
+        double mean = EconomicMetrics.calculateMean(balances);
+        double median = EconomicMetrics.calculateMedian(EconomicMetrics.getSortedBalances(balances));
+        double standardDeviation = EconomicMetrics.calculateStdDev(balances, mean);
 
         Map<String, String> statsPlaceholders = new HashMap<>();
         statsPlaceholders.put("mean", String.format("%.2f", mean));
@@ -770,40 +761,7 @@ public final class EcoBalancer extends JavaPlugin {
         sender.sendMessage(getFormattedMessage("messages.stats_sd", statsPlaceholders));
     }
 
-    private double calculateMedian(List<Double> values) {
-        Collections.sort(values);
-        int size = values.size();
-        if (size == 0) {
-            return 0;
-        } else if (size % 2 == 0) {
-            return (values.get(size / 2 - 1) + values.get(size / 2)) / 2;
-        } else {
-            return values.get(size / 2);
-        }
-    }
-
-    private double calculateStandardDeviation(List<Double> values, double mean) {
-        if (values.size() == 0) {
-            return 0;
-        }
-        double sum = 0;
-        for (double value : values) {
-            sum += Math.pow(value - mean, 2);
-        }
-        return Math.sqrt(sum / values.size());
-    }
-
-    private String formatNumber(double number) {
-        if (number >= 1000000000) {
-            return String.format("%.1fb", number / 1000000000);
-        } else if (number >= 1000000) {
-            return String.format("%.1fm", number / 1000000);
-        } else if (number >= 1000) {
-            return String.format("%.1fk", number / 1000);
-        } else {
-            return String.format("%.1f", number);
-        }
-    }
+    // Removed local median/stddev/format helpers in favor of EconomicMetrics
 
     public double calculatePercentile(double balance, double low, double high) {
         OfflinePlayer[] players = Bukkit.getOfflinePlayers();
@@ -833,17 +791,177 @@ public final class EcoBalancer extends JavaPlugin {
         DatabaseUtils.cleanupRecords(this, recordRetentionDays, getLogger());
     }
 
-    /**
-     * 检查是否运行在Folia服务器上
-     */
-    private boolean checkFoliaSupport() {
+    // Snapshot scheduling and computation
+    private void scheduleDailySnapshot() {
         try {
-            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
-            return true;
-        } catch (ClassNotFoundException e) {
-            return false;
+            int hourOfDay = Integer.parseInt(checkTime.split(":" )[0]);
+            int minute = Integer.parseInt(checkTime.split(":" )[1]);
+            long initialDelay = calculateDelayForDaily(Calendar.getInstance(), hourOfDay, minute);
+            long dayPeriod = 24L * 60L * 60L * 20L; // 24h in ticks
+            SchedulerUtils.runTaskTimer(this, this::createEconomicSnapshot, initialDelay, dayPeriod);
+        } catch (Throwable ignored) {
         }
     }
+
+    private void createEconomicSnapshot() {
+        try {
+            // Ensure on main thread for Vault access
+            List<Double> balances = collectAllBalances();
+            if (balances == null) balances = new ArrayList<>();
+            double totalMoney = balances.stream().mapToDouble(Double::doubleValue).sum();
+            int playerCount = balances.size();
+
+            List<Double> sorted = new ArrayList<>(balances);
+            Collections.sort(sorted);
+            double mean = (playerCount > 0) ? (totalMoney / playerCount) : 0.0;
+            double median = EconomicMetrics.calculateMedian(sorted);
+            double stdDev = EconomicMetrics.calculateStdDev(balances, mean);
+            double gini = 0.0;
+            try { gini = org.cubexmc.ecobalancer.utils.EconomicMetrics.calculateGini(balances); } catch (Throwable ignored) {}
+            double top1Pct = 0.0;
+            try { top1Pct = org.cubexmc.ecobalancer.utils.EconomicMetrics.calculateConcentration(balances, 1.0); } catch (Throwable ignored) {}
+            double top5Pct = 0.0;
+            try { top5Pct = org.cubexmc.ecobalancer.utils.EconomicMetrics.calculateConcentration(balances, 5.0); } catch (Throwable ignored) {}
+            double top10Pct = 0.0;
+            try { top10Pct = org.cubexmc.ecobalancer.utils.EconomicMetrics.calculateConcentration(balances, 10.0); } catch (Throwable ignored) {}
+
+            // Active players counts
+            int active7 = 0;
+            int active30 = 0;
+            try {
+                List<Double> b7 = org.cubexmc.ecobalancer.utils.EconomicMetrics.collectBalances(7);
+                List<Double> b30 = org.cubexmc.ecobalancer.utils.EconomicMetrics.collectBalances(30);
+                active7 = (b7 == null) ? 0 : b7.size();
+                active30 = (b30 == null) ? 0 : b30.size();
+            } catch (Throwable ignored) {}
+
+            java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("yyyy-MM-dd");
+            String date = fmt.format(new Date());
+            DatabaseUtils.EconomicSnapshot snap = new DatabaseUtils.EconomicSnapshot();
+            snap.date = date;
+            snap.timestamp = System.currentTimeMillis();
+            snap.totalMoney = totalMoney;
+            snap.playerCount = playerCount;
+            snap.activePlayers7d = active7;
+            snap.activePlayers30d = active30;
+            snap.gini = gini;
+            snap.median = median;
+            snap.mean = mean;
+            snap.stdDev = stdDev;
+            snap.top1Pct = top1Pct;
+            snap.top5Pct = top5Pct;
+            snap.top10Pct = top10Pct;
+
+            DatabaseUtils.saveSnapshot(this, snap, getLogger());
+        } catch (Throwable t) {
+            getLogger().warning("Failed to create economic snapshot: " + t.getMessage());
+        }
+    }
+
+    private static class MetricsSnapshot {
+        double gini;
+        double median;
+        double mean;
+        double stdDev;
+        double top1Pct;
+        double totalMoney;
+    }
+
+    // Batched computation of metrics snapshot on the main thread to avoid long stalls
+    private void computeMetricsSnapshotBatched(CommandSender sender, int batchSize, long delayTicks, java.util.function.Consumer<MetricsSnapshot> done) {
+        final OfflinePlayer[] players = Bukkit.getOfflinePlayers();
+        final java.util.List<Double> balances = new java.util.ArrayList<>(players.length);
+
+        class PreScan implements Runnable {
+            int index = 0;
+            @Override public void run() {
+                int start = index;
+                int end = Math.min(index + Math.max(1, batchSize), players.length);
+                for (int i = start; i < end; i++) {
+                    OfflinePlayer p = players[i];
+                    try {
+                        if (econ != null && econ.hasAccount(p)) {
+                            double bal = econ.getBalance(p);
+                            if (bal >= 0) balances.add(bal);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+                index = end;
+
+                Map<String,String> ph = new java.util.HashMap<>();
+                ph.put("start", Integer.toString(start));
+                ph.put("end", Integer.toString(end));
+                ph.put("batch", Integer.toString(end - start));
+                ph.put("total_players", Integer.toString(players.length));
+                sendMessage(sender, "messages.players_processing", ph, false);
+
+                if (index < players.length) {
+                    SchedulerUtils.runTaskLater(EcoBalancer.this, this, Math.max(1L, delayTicks));
+                } else {
+                    MetricsSnapshot ms = new MetricsSnapshot();
+                    ms.totalMoney = balances.stream().mapToDouble(Double::doubleValue).sum();
+                    int n = balances.size();
+                    ms.mean = (n > 0) ? (ms.totalMoney / n) : 0.0;
+                    java.util.List<Double> sorted = new java.util.ArrayList<>(balances);
+                    java.util.Collections.sort(sorted);
+                    ms.median = EconomicMetrics.calculateMedian(sorted);
+                    ms.stdDev = EconomicMetrics.calculateStdDev(balances, ms.mean);
+                    try { ms.gini = EconomicMetrics.calculateGini(balances); } catch (Throwable ignored) {}
+                    try { ms.top1Pct = EconomicMetrics.calculateConcentration(balances, 1.0); } catch (Throwable ignored) {}
+                    done.accept(ms);
+                }
+            }
+        }
+
+        SchedulerUtils.runTask(this, new PreScan());
+    }
+
+    private MetricsSnapshot computeMetricsSnapshot() {
+        MetricsSnapshot ms = new MetricsSnapshot();
+        List<Double> balances = collectAllBalances();
+        if (balances == null) balances = new ArrayList<>();
+        ms.totalMoney = balances.stream().mapToDouble(Double::doubleValue).sum();
+        int n = balances.size();
+        ms.mean = (n > 0) ? (ms.totalMoney / n) : 0.0;
+        List<Double> sorted = new ArrayList<>(balances);
+        Collections.sort(sorted);
+        ms.median = EconomicMetrics.calculateMedian(sorted);
+        ms.stdDev = EconomicMetrics.calculateStdDev(balances, ms.mean);
+        try { ms.gini = org.cubexmc.ecobalancer.utils.EconomicMetrics.calculateGini(balances); } catch (Throwable ignored) {}
+        try { ms.top1Pct = org.cubexmc.ecobalancer.utils.EconomicMetrics.calculateConcentration(balances, 1.0); } catch (Throwable ignored) {}
+        return ms;
+    }
+
+    // Save operation impact after a short delay to wait for async DB record writes
+    private void saveImpactAfterDelay(int operationId, MetricsSnapshot before, long delayTicks) {
+        SchedulerUtils.runTaskLater(this, () -> {
+            // Compute after snapshot on main thread for Vault safety
+            MetricsSnapshot after = computeMetricsSnapshot();
+            // Write impact data asynchronously
+            SchedulerUtils.runTaskAsync(this, () -> {
+                DatabaseUtils.OperationImpact impact = new DatabaseUtils.OperationImpact();
+                impact.operationId = operationId;
+                impact.beforeGini = before.gini;
+                impact.afterGini = after.gini;
+                impact.beforeMedian = before.median;
+                impact.afterMedian = after.median;
+                impact.beforeMean = before.mean;
+                impact.afterMean = after.mean;
+                impact.beforeStdDev = before.stdDev;
+                impact.afterStdDev = after.stdDev;
+                impact.beforeTop1Pct = before.top1Pct;
+                impact.afterTop1Pct = after.top1Pct;
+                impact.beforeTotalMoney = before.totalMoney;
+                impact.afterTotalMoney = after.totalMoney;
+                impact.totalTaxCollected = DatabaseUtils.calculateTotalDeduction(this, operationId, getLogger());
+                impact.playersAffected = DatabaseUtils.getAffectedPlayersCount(this, operationId, getLogger());
+                impact.timestamp = System.currentTimeMillis();
+                DatabaseUtils.saveOperationImpact(this, operationId, impact, getLogger());
+            });
+        }, Math.max(0L, delayTicks));
+    }
+
+    
 
     // Collect all player balances (offline + online) via Vault
     private List<Double> collectAllBalances() {

@@ -7,6 +7,7 @@ import org.bukkit.command.CommandSender;
 import org.cubexmc.ecobalancer.EcoBalancer;
 import org.cubexmc.ecobalancer.utils.DatabaseUtils;
 import org.cubexmc.ecobalancer.utils.EconomicMetrics;
+import org.cubexmc.ecobalancer.utils.AnalysisFilters;
 import org.cubexmc.ecobalancer.utils.MessageUtils;
 import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
@@ -27,15 +28,18 @@ public class HealthCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        // 进度提示
+        MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.health.calculating", null), plugin.getLogger(), false);
         // 异步计算健康度
         SchedulerUtils.asyncRun(plugin, () -> {
             try {
-                // 收集所有玩家余额
-                List<Double> balances = EconomicMetrics.collectBalances(null);
+                // 收集余额（带过滤参数）
+                AnalysisFilters.FilterCriteria criteria = AnalysisFilters.parse(args).criteria;
+                List<Double> balances = AnalysisFilters.collectFilteredBalances(criteria, plugin.getConfig().getString("stats-world", ""));
                 if (balances.isEmpty()) {
-                    SchedulerUtils.globalRun(plugin, () -> {
-                        MessageUtils.sendMessage(sender, "&c没有找到任何玩家数据", plugin.getLogger(), false);
-                    }, 0, 0);
+                    SchedulerUtils.runTask(plugin, () -> {
+                        MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.health.no_data", null), plugin.getLogger(), false);
+                    });
                     return;
                 }
 
@@ -63,17 +67,17 @@ public class HealthCommand implements CommandExecutor {
                 final HealthScore finalScore = healthScore;
                 final String finalTrend = trend;
                 final int playerCount = balances.size();
-                SchedulerUtils.globalRun(plugin, () -> {
+                SchedulerUtils.runTask(plugin, () -> {
                     sendHealthReport(sender, finalScore, gini, top1Pct, top10Pct, median, mean, 
                                    stdDev, playerCount, finalTrend);
-                }, 0, 0);
+                });
 
             } catch (Exception e) {
                 plugin.getLogger().severe("计算经济健康度失败: " + e.getMessage());
                 e.printStackTrace();
-                SchedulerUtils.globalRun(plugin, () -> {
-                    MessageUtils.sendMessage(sender, "&c计算失败，请查看控制台日志", plugin.getLogger(), false);
-                }, 0, 0);
+                SchedulerUtils.runTask(plugin, () -> {
+                    MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.health.error", null), plugin.getLogger(), false);
+                });
             }
         }, 0);
 
@@ -169,7 +173,7 @@ public class HealthCommand implements CommandExecutor {
      * 简化的发送消息方法
      */
     private void msg(CommandSender sender, String message) {
-        MessageUtils.sendMessage(sender, message, plugin.getLogger(), false);
+        MessageUtils.sendMessage(sender, ChatColor.translateAlternateColorCodes('&', message), plugin.getLogger(), false);
     }
 
     /**
@@ -182,68 +186,77 @@ public class HealthCommand implements CommandExecutor {
         String timestamp = dateFormat.format(new Date());
 
         msg(sender, "&6&l════════════════════════════════════");
-        msg(sender, "&e&l         经济健康度评估报告");
-        msg(sender, "&7生成时间: " + timestamp);
+        java.util.HashMap<String, String> ph = new java.util.HashMap<>();
+        msg(sender, plugin.getFormattedMessage("messages.health.title", null));
+        ph.clear(); ph.put("timestamp", timestamp);
+        msg(sender, plugin.getFormattedMessage("messages.health.generated_at", ph));
         msg(sender, "&6&l════════════════════════════════════");
         
         // 综合评分和等级
         String levelColor = getLevelColor(score.level);
         String levelName = getLevelName(score.level);
         msg(sender, "");
-        msg(sender, String.format("&b综合评分: %s%.1f/100 &7(%s%s&7)", 
-            levelColor, score.totalScore, levelColor, levelName));
+        ph.clear();
+        ph.put("score", String.format("%.1f", score.totalScore));
+        ph.put("level", levelName);
+        msg(sender, levelColor + plugin.getFormattedMessage("messages.health.score_line", ph));
         msg(sender, generateProgressBar(score.totalScore, 100, 30, levelColor));
         
         if (!trend.isEmpty()) {
-            msg(sender, String.format("&7趋势: %s", 
-                trend.equals("↑") ? "&c↑ 恶化" : trend.equals("↓") ? "&a↓ 改善" : "&e→ 稳定"));
+            String trendKey = trend.equals("↑") ? "messages.health.trend_up" : trend.equals("↓") ? "messages.health.trend_down" : "messages.health.trend_stable";
+            msg(sender, plugin.getFormattedMessage(trendKey, null));
         }
 
         // 详细指标
         msg(sender, "");
-        msg(sender, "&e&l▸ 详细指标:");
+        msg(sender, plugin.getFormattedMessage("messages.health.details_header", null));
         
         // 1. 基尼系数
         String giniColor = gini <= 0.4 ? "&a" : gini <= 0.5 ? "&e" : "&c";
-        msg(sender, String.format("  &7基尼系数: %s%.3f &7(评分: &b%.1f&7/40)", 
-            giniColor, gini, score.giniScore * 0.4));
+        ph.clear();
+        ph.put("gini_colored", giniColor + String.format("%.3f", gini));
+        ph.put("gini_score_40", String.format("%.1f", score.giniScore * 0.4));
+        msg(sender, plugin.getFormattedMessage("messages.health.gini_line", ph));
         msg(sender, "  " + generateProgressBar(gini, 1.0, 20, giniColor));
-        msg(sender, String.format("    &8└─ %s", getGiniDescription(gini)));
+        ph.clear(); ph.put("gini_desc", getGiniDescription(gini));
+        msg(sender, plugin.getFormattedMessage("messages.health.gini_desc_line", ph));
 
         // 2. 财富集中度
         String concColor = top1Pct <= 25 ? "&a" : top1Pct <= 40 ? "&e" : "&c";
-        msg(sender, String.format("  &7财富集中度: (评分: &b%.1f&7/30)", 
-            score.concentrationScore * 0.3));
-        msg(sender, String.format("    &8• &7Top 1%%: %s%.1f%% &7财富", 
-            concColor, top1Pct));
+        ph.clear(); ph.put("concentration_score_30", String.format("%.1f", score.concentrationScore * 0.3));
+        msg(sender, plugin.getFormattedMessage("messages.health.concentration_header", ph));
+        ph.clear(); ph.put("top1_colored", concColor + String.format("%.1f", top1Pct));
+        msg(sender, plugin.getFormattedMessage("messages.health.top1_line", ph));
         msg(sender, "      " + generateProgressBar(top1Pct, 100, 18, concColor));
-        msg(sender, String.format("    &8• &7Top 10%%: %s%.1f%% &7财富", 
-            concColor, top10Pct));
+        ph.clear(); ph.put("top10_colored", concColor + String.format("%.1f", top10Pct));
+        msg(sender, plugin.getFormattedMessage("messages.health.top10_line", ph));
         msg(sender, "      " + generateProgressBar(top10Pct, 100, 18, concColor));
 
         // 3. 分布均匀度
         double cv = (mean > 0) ? (stdDev / mean) : 0;
         String cvColor = cv <= 1.5 ? "&a" : cv <= 2.5 ? "&e" : "&c";
-        msg(sender, String.format("  &7分布均匀度: (评分: &b%.1f&7/30)", 
-            score.distributionScore * 0.3));
-        msg(sender, String.format("    &8• &7变异系数: %s%.2f", cvColor, cv));
-        msg(sender, String.format("    &8• &7平均值: &f%s", 
-            EconomicMetrics.formatLargeNumber(mean)));
-        msg(sender, String.format("    &8• &7中位数: &f%s", 
-            EconomicMetrics.formatLargeNumber(median)));
-        msg(sender, String.format("    &8• &7标准差: &f%s", 
-            EconomicMetrics.formatLargeNumber(stdDev)));
+        ph.clear(); ph.put("distribution_score_30", String.format("%.1f", score.distributionScore * 0.3));
+        msg(sender, plugin.getFormattedMessage("messages.health.distribution_header", ph));
+        ph.clear(); ph.put("cv_colored", cvColor + String.format("%.2f", cv));
+        msg(sender, plugin.getFormattedMessage("messages.health.cv_line", ph));
+        ph.clear(); ph.put("mean", EconomicMetrics.formatLargeNumber(mean));
+        msg(sender, plugin.getFormattedMessage("messages.health.mean_line", ph));
+        ph.clear(); ph.put("median", EconomicMetrics.formatLargeNumber(median));
+        msg(sender, plugin.getFormattedMessage("messages.health.median_line", ph));
+        ph.clear(); ph.put("stddev", EconomicMetrics.formatLargeNumber(stdDev));
+        msg(sender, plugin.getFormattedMessage("messages.health.stddev_line", ph));
 
         // 建议
         msg(sender, "");
-        msg(sender, "&e&l▸ 建议措施:");
-        List<String> recommendations = getRecommendations(score, gini, top1Pct, cv);
-        for (String rec : recommendations) {
-            msg(sender, "  &8• &7" + rec);
+        msg(sender, plugin.getFormattedMessage("messages.health.reco_header", null));
+        List<String> recommendations = getRecommendationKeys(score, gini, top1Pct, cv);
+        for (String key : recommendations) {
+            msg(sender, plugin.getFormattedMessage("messages.health.reco." + key, null));
         }
 
         msg(sender, "");
-        msg(sender, String.format("&7样本数量: &f%d &7名玩家", playerCount));
+        ph.clear(); ph.put("player_count", String.valueOf(playerCount));
+        msg(sender, plugin.getFormattedMessage("messages.health.sample_line", ph));
         msg(sender, "&6&l════════════════════════════════════");
     }
 
@@ -285,75 +298,63 @@ public class HealthCommand implements CommandExecutor {
      * 获取等级名称
      */
     private String getLevelName(HealthLevel level) {
+        String key;
         switch (level) {
-            case EXCELLENT: return "优秀";
-            case GOOD: return "良好";
-            case MODERATE: return "中等";
-            case POOR: return "较差";
-            case CRITICAL: return "危急";
-            default: return "未知";
+            case EXCELLENT: key = "messages.health.level.excellent"; break;
+            case GOOD: key = "messages.health.level.good"; break;
+            case MODERATE: key = "messages.health.level.moderate"; break;
+            case POOR: key = "messages.health.level.poor"; break;
+            case CRITICAL: key = "messages.health.level.critical"; break;
+            default: key = "messages.health.level.unknown"; break;
         }
+        return ChatColor.stripColor(plugin.getFormattedMessage(key, null));
     }
 
     /**
      * 获取基尼系数描述
      */
     private String getGiniDescription(double gini) {
-        if (gini <= 0.3) {
-            return "极度平等";
-        } else if (gini <= 0.4) {
-            return "相对平等";
-        } else if (gini <= 0.5) {
-            return "差距适中";
-        } else if (gini <= 0.6) {
-            return "差距较大";
-        } else {
-            return "极度不平等";
-        }
+        String key;
+        if (gini <= 0.3) key = "messages.health.gini_desc.very_equal";
+        else if (gini <= 0.4) key = "messages.health.gini_desc.relatively_equal";
+        else if (gini <= 0.5) key = "messages.health.gini_desc.moderate_gap";
+        else if (gini <= 0.6) key = "messages.health.gini_desc.large_gap";
+        else key = "messages.health.gini_desc.very_unequal";
+        return plugin.getFormattedMessage(key, null);
     }
 
     /**
      * 获取改善建议
      */
-    private List<String> getRecommendations(HealthScore score, double gini, double top1Pct, double cv) {
-        List<String> recommendations = new java.util.ArrayList<>();
-
+    private java.util.List<String> getRecommendationKeys(HealthScore score, double gini, double top1Pct, double cv) {
+        java.util.List<String> keys = new java.util.ArrayList<>();
         if (score.level == HealthLevel.EXCELLENT) {
-            recommendations.add("经济状态优秀，继续保持当前政策");
-            recommendations.add("可考虑微调税率以维持平衡");
-            return recommendations;
+            keys.add("state_excellent_keep");
+            keys.add("minor_tune_tax");
+            return keys;
         }
-
-        // 基于基尼系数的建议
         if (gini > 0.5) {
-            recommendations.add("基尼系数过高，建议加大累进税率");
-            recommendations.add("考虑对富裕玩家征收更高税率");
+            keys.add("gini_very_high_progressive");
+            keys.add("tax_rich_more");
         } else if (gini > 0.4) {
-            recommendations.add("适度提高高收入阶层的税率");
+            keys.add("raise_high_income_tax_moderate");
         }
-
-        // 基于财富集中度的建议
         if (top1Pct > 40) {
-            recommendations.add("财富过度集中于顶层，需要再分配机制");
-            recommendations.add("可设置财富上限或特别税");
+            keys.add("wealth_overly_concentrated");
+            keys.add("special_tax_cap");
         } else if (top1Pct > 25) {
-            recommendations.add("顶层财富集中度偏高，建议适度调控");
+            keys.add("concentration_high_moderate_regulation");
         }
-
-        // 基于分布均匀度的建议
         if (cv > 2.5) {
-            recommendations.add("财富分布极不均匀，需要强力干预");
-            recommendations.add("建议实施福利补贴或最低收入保障");
+            keys.add("cv_very_high_strong_intervention");
+            keys.add("welfare_support");
         } else if (cv > 1.5) {
-            recommendations.add("考虑增加中产阶级扶持政策");
+            keys.add("support_middle_class");
         }
-
-        // 如果没有明显问题
-        if (recommendations.isEmpty()) {
-            recommendations.add("经济状态基本健康，维持现状即可");
+        if (keys.isEmpty()) {
+            keys.add("healthy_maintain");
         }
-
-        return recommendations;
+        return keys;
     }
 
     /**

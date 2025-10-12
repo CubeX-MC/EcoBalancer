@@ -361,7 +361,15 @@ public final class SchedulerUtils {
         if (plugin == null) {
             return;
         }
-        Bukkit.getScheduler().cancelTasks(plugin);
+        // On Folia, Bukkit's legacy scheduler operations are unsupported and will throw
+        // UnsupportedOperationException. Only cancel our tracked tasks there.
+        if (!isFolia()) {
+            try {
+                Bukkit.getScheduler().cancelTasks(plugin);
+            } catch (UnsupportedOperationException ignored) {
+                // In case of unexpected platform behavior, fall back to tracked handles only
+            }
+        }
 
         Set<Object> handles = TRACKED_TASKS.remove(plugin);
         if (handles == null) {

@@ -28,6 +28,8 @@ public class CheckRecordCommand implements TabExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        // 进度提示
+        sender.sendMessage(plugin.getFormattedMessage("messages.processing", null));
         // 检查参数数量
         if (args.length < 1 || args.length > 3) {
             sender.sendMessage(plugin.getFormattedMessage("messages.record_usage", null));
@@ -119,26 +121,36 @@ public class CheckRecordCommand implements TabExecutor {
                                         Map<String, String> pagePlaceholders = new HashMap<>();
                                         pagePlaceholders.put("page", String.valueOf(page));
                                         pagePlaceholders.put("total", String.valueOf(totalPages));
-
-                                        // add clickable next and previous page messages
-                                        TextComponent previouwPage = new TextComponent();
-                                        TextComponent nextPage = new TextComponent();
-                                        if (page > 1) {
-                                            previouwPage.setText(plugin.getFormattedMessage("messages.prev_page", null));
-                                            previouwPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecord " + operationId + " " + (page - 1)));
+                                        // Build clickable prev/next and preserve sort param
+                                        String baseCmdPrefix;
+                                        if ("alphabet".equalsIgnoreCase(sortBy) || "deduction".equalsIgnoreCase(sortBy)) {
+                                            baseCmdPrefix = "/ecobal checkrecord " + operationId + " " + sortBy + " ";
                                         } else {
-                                            previouwPage.setText(plugin.getFormattedMessage("messages.no_prev_page", null));
+                                            baseCmdPrefix = "/ecobal checkrecord " + operationId + " ";
+                                        }
+
+                                        TextComponent prevPageComp = new TextComponent();
+                                        TextComponent nextPageComp = new TextComponent();
+
+                                        if (page > 1) {
+                                            prevPageComp.setText(plugin.getFormattedMessage("messages.prev_page", null));
+                                            prevPageComp.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, baseCmdPrefix + (page - 1)));
+                                        } else {
+                                            prevPageComp.setText(plugin.getFormattedMessage("messages.no_prev_page", null));
                                         }
                                         if (page < totalPages) {
-                                            nextPage.setText(plugin.getFormattedMessage("messages.next_page", null));
-                                            nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecord " + operationId + " " + (page + 1)));
+                                            nextPageComp.setText(plugin.getFormattedMessage("messages.next_page", null));
+                                            nextPageComp.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, baseCmdPrefix + (page + 1)));
                                         } else {
-                                            nextPage.setText(plugin.getFormattedMessage("messages.no_next_page", null));
+                                            nextPageComp.setText(plugin.getFormattedMessage("messages.no_next_page", null));
                                         }
-                                        pagePlaceholders.put("prev", previouwPage.toPlainText());
-                                        pagePlaceholders.put("next", nextPage.toPlainText());
 
-                                        TextComponent message = plugin.getFormattedMessage("messages.record_page", pagePlaceholders, new String[]{"prev", "next"}, new TextComponent[]{previouwPage, nextPage});
+                                        TextComponent message = plugin.getFormattedMessage(
+                                                "messages.record_page",
+                                                pagePlaceholders,
+                                                new String[]{"prev", "next"},
+                                                new TextComponent[]{prevPageComp, nextPageComp}
+                                        );
                                         sender.spigot().sendMessage(message);
 
                                         sender.sendMessage(plugin.getFormattedMessage("messages.record_footer", null));
@@ -187,13 +199,30 @@ public class CheckRecordCommand implements TabExecutor {
 
     @Override
     public final List<String> onTabComplete(final CommandSender commandSender, final Command command, final String s, final String[] strings) {
-        final int size = 2;
-        final Collection<String> ret = new ArrayList<>(size);
-        if (2 == strings.length) {
-            ret.add("deduction");
-            ret.add("alphabet");
+        // Expecting: /ecobal checkrecord <operation_id> [sort_by|page] [page]
+        List<String> suggestions = new ArrayList<>();
+
+        // No suggestions for the first arg here (operation_id)
+        if (strings.length == 0) return suggestions;
+
+        // If typing the 2nd arg, suggest sort options; also allow numeric page
+        if (strings.length == 2) {
+            suggestions.add("deduction");
+            suggestions.add("alphabet");
+            return StringUtil.copyPartialMatches(strings[1], suggestions, new ArrayList<>());
         }
-        final String lowerCase = strings[1].toLowerCase(Locale.ROOT);
-        return StringUtil.copyPartialMatches(lowerCase, ret, new ArrayList<>(size));
+
+        // If typing the 3rd arg and 2nd arg was a sort keyword, suggest some common pages
+        if (strings.length == 3) {
+            String arg2 = strings[1].toLowerCase(Locale.ROOT);
+            if ("deduction".equals(arg2) || "alphabet".equals(arg2)) {
+                suggestions.add("1");
+                suggestions.add("2");
+                suggestions.add("3");
+                return StringUtil.copyPartialMatches(strings[2], suggestions, new ArrayList<>());
+            }
+        }
+
+        return suggestions;
     }
 }

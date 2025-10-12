@@ -98,11 +98,11 @@ public class TaxReportCommand implements CommandExecutor {
      * 获取最近一次 checkAll 操作的 ID
      */
     private int getLatestCheckAllOperationId(Connection conn) {
-        String sql = "SELECT operation_id FROM operations WHERE is_check_all = 1 ORDER BY operation_id DESC LIMIT 1";
+        String sql = "SELECT id FROM operations WHERE is_checkall = 1 ORDER BY timestamp DESC LIMIT 1";
         try (PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
-                return rs.getInt("operation_id");
+                return rs.getInt("id");
             }
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to get latest checkAll operation: " + e.getMessage());
@@ -116,16 +116,16 @@ public class TaxReportCommand implements CommandExecutor {
     private TaxReportData queryReportData(Connection conn, int operationId) {
         try {
             // 查询操作信息
-            String opSql = "SELECT timestamp, is_check_all FROM operations WHERE operation_id = ?";
-            String timestamp = null;
+            String opSql = "SELECT timestamp, is_checkall FROM operations WHERE id = ?";
+            long timestamp = 0L;
             boolean isCheckAll = false;
 
             try (PreparedStatement ps = conn.prepareStatement(opSql)) {
                 ps.setInt(1, operationId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (rs.next()) {
-                        timestamp = rs.getString("timestamp");
-                        isCheckAll = rs.getInt("is_check_all") == 1;
+                        timestamp = rs.getLong("timestamp");
+                        isCheckAll = rs.getBoolean("is_checkall");
                     } else {
                         return null; // 操作不存在
                     }
@@ -221,14 +221,12 @@ public class TaxReportCommand implements CommandExecutor {
     /**
      * 格式化时间戳
      */
-    private String formatTimestamp(String timestamp) {
+    private String formatTimestamp(long timestamp) {
         try {
-            SimpleDateFormat inputFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             SimpleDateFormat outputFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-            Date date = inputFormat.parse(timestamp);
-            return outputFormat.format(date);
+            return outputFormat.format(new Date(timestamp));
         } catch (Exception e) {
-            return timestamp;
+            return Long.toString(timestamp);
         }
     }
 
@@ -237,7 +235,7 @@ public class TaxReportCommand implements CommandExecutor {
      */
     private static class TaxReportData {
         final int operationId;
-        final String timestamp;
+        final long timestamp;
         final boolean isCheckAll;
         final int playerCount;
         final double totalTax;
@@ -245,7 +243,7 @@ public class TaxReportCommand implements CommandExecutor {
         final double avgNewBalance;
         final List<TaxBracketInfo> brackets;
 
-        TaxReportData(int operationId, String timestamp, boolean isCheckAll, int playerCount,
+        TaxReportData(int operationId, long timestamp, boolean isCheckAll, int playerCount,
                      double totalTax, double avgOldBalance, double avgNewBalance,
                      List<TaxBracketInfo> brackets) {
             this.operationId = operationId;

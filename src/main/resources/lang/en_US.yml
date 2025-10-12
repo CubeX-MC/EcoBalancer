@@ -5,17 +5,20 @@ messages:
   # help
   commands:
     help: '&f/ecobal help &6- Help'
-    checkall: '&f/checkall &6- Check and clean all player balances'
-    checkplayer: '&f/checkplayer <player> &6- Check and clean a single player balance'
+    checkall: '&f/ecobal checkall &6- Check and clean all player balances'
+    checkplayer: '&f/ecobal checkplayer <player> &6- Check and clean a single player balance'
     gini: '&f/ecobal gini [days] &6- Calculate Gini Coefficient'
     concentration: '&f/ecobal concentration [%...] &6- Wealth concentration analysis'
     report: '&f/ecobal report [operation_id] &6- Tax report'
-    checkrecords: '&f/checkrecords [page] &6- View tax operation records'
-    checkrecord: '&f/checkrecord <operation_id> [alphabet|deduction] [page] &6- View player balance change records'
-    restore: '&f/restore <operation_id> &6- Restore operation'
-    stats: '&f/stats <number of bars> [low] [up] &6- Show descriptive statistics'
-    interval: '&f/interval [alphabet|balance] [low] [up] [page] &6- Show players in the specified interval'
-    perc: '&f/perc <balance> [low] [up] &6- Show player balance percentile'
+    checkrecords: '&f/ecobal checkrecords [page] &6- View tax operation records'
+    checkrecord: '&f/ecobal checkrecord <operation_id> [alphabet|deduction] [page] &6- View player balance change records'
+    restore: '&f/ecobal restore <operation_id> &6- Restore operation'
+    stats: '&f/ecobal stats <number of bars> [low] [up] &6- Show descriptive statistics'
+    interval: '&f/ecobal interval [alphabet|balance] [low] [up] [page] &6- Show players in the specified interval'
+    perc: '&f/ecobal perc <balance> [low] [up] &6- Show player balance percentile'
+    health: '&f/ecobal health &6- Economy health report'
+    impact: '&f/ecobal impact [operation_id] &6- Tax impact analysis'
+    trends: '&f/ecobal trends [days] &6- Economy trends report'
     reload: '&f/ecobal reload &6- Reload configuration file'
   help_footer: '&7&oFrom &c&lCube&f&lX&7&o ruling class toolkit'
   help_header: '&e&lEcoBalancer &fHelp:'
@@ -23,6 +26,7 @@ messages:
   next_page: "&6Next Page"
   no_prev_page: "   "
   no_next_page: "   "
+  processing: "%prefix% &7Processing, please wait..."
   # check
   scanning_offline_players: '&7Scanning offline players&f...'
   enter_player_name_or_use_checkall: '&6Please enter player name or use &f/checkall'
@@ -42,9 +46,11 @@ messages:
   records_header: "&f&lTax Operation Records:"
   records_operation: "&7[%restored%] &e%type% &f%time% &7%deduction_amount% &r[%operation_id%]"
   records_page: "%prev% &ePage &f%page%&e, total &f%total% &epages %next%"
-  records_click: "&7点击查看详细信息。"
+  records_click: "&7Click to view details."
   records_footer: "&7&oUse /checkrecords [page] to view more."
   records_error: "&cAn error occurred: %error%"
+  no_records: "&cNo records found."
+  unknown_command: "&cUnknown subcommand. Use /ecobal help."
   # record
   record_usage: "&6Usage: &f/checkrecord <operation ID> [page]"
   record_invalid_id: "&cInvalid operation ID!"
@@ -62,6 +68,8 @@ messages:
   restoring_all: "&7Restoring operation %operation_id% (server-wide check)..."
   restored_all: "&aOperation %operation_id% has been restored (server-wide check)!"
   restored_player: "&aOperation %operation_id% has been restored (player check)!"
+  restored_range: "&aRestored operation #%operation_id% and subsequent %count% operations."
+  restore_already_restored: "&eOperation #%operation_id% was already restored."
   restore_invalid_id: "&cInvalid operation ID!"
   restore_error: "&cAn error occurred: %error%"
   restore_operation_not_found: "&cOperation not found!"
@@ -78,10 +86,12 @@ messages:
   stats_check_interval: "§7Interval: §e%low% - %up%§r"
   stats_mean_median: "Mean: &e%mean% &fMedian: &e%median%"
   stats_sd: "Standard Deviation: &e%sd%"
-  # intervalplayer
-  interval_usage: "&f/intervalplayer [balance|alphabet] [low] [up] &6- Show players in the specified interval"
+  # interval
+  interval_usage: "&f/interval [alphabet|balance] [low] [up] [page] &6- Show players in the specified interval"
   interval_limits: "&6Use '_' to indicate unlimited."
   interval_invalid_args: "&cInvalid arguments. &fPlease use numbers or '_' to limit the range."
+  interval_invalid_low: "&cInvalid lower bound."
+  interval_invalid_up: "&cInvalid upper bound."
   interval_collecting: "&7Collecting player balance information..."
   interval_sorting: "&7Sorting..."
   interval_header: "&6Players with balance between &e%low% - %up%&6:"
@@ -93,6 +103,52 @@ messages:
   perc_limits: "&7Use '_' to indicate unlimited."
   perc_invalid_args: "&cInvalid arguments. &fPlease use numbers or '_' to limit the range."
   perc_success: "&6Balance &e%balance% &6is at the &e%percentile%%&6 percentile in the &e%low% - %up% &6interval."
+  # impact
+  impact:
+    loading: "&7Loading impact data..."
+    invalid_id: "&cInvalid operation ID: %id%"
+    not_found: "&cImpact data for operation #%operation_id% not found"
+    error: "&cFailed to load impact data. Check console logs."
+    hint_latest: "&7Use &e/eb impact &7to view the latest impact"
+    banner: "&6&l════════════════════════════════════"
+    title: "&e&l         Tax Impact Analysis"
+    operation_line: "&7Operation ID: &f#%operation_id% &7| Time: %timestamp%"
+    section_overview: "&e&l▸ Overview:"
+    collected: "  &7Total Collected: &a%total_tax%"
+    affected: "  &7Players Affected: &f%players%"
+    section_inequality: "&e&l▸ Inequality Change:"
+    gini_line: "  &7Gini: %before% → %after% %delta_color%%delta% (%delta_color%%delta_pct%%%&7)"
+    section_concentration: "&e&l▸ Concentration Change:"
+    top1_line: "  &7Top 1%%: %before%%% → %after%%% %delta_color%%delta%%% (%delta_color%%delta_pct%%%&7)"
+    section_distribution: "&e&l▸ Distribution Change:"
+    median_line: "  &7Median: %before% → %after% %delta_color%%delta% (%delta_color%%delta_pct%%%&7)"
+    mean_line: "  &7Mean: %before% → %after% %delta_color%%delta% (%delta_color%%delta_pct%%%&7)"
+    stddev_line: "  &7Std Dev: %before% → %after% %delta_color%%delta% (%delta_color%%delta_pct%%%&7)"
+    section_scale: "&e&l▸ Economic Scale:"
+    total_line: "  &7Total Money: %before% → %after%"
+    change_line: "  &7Change: &c%change% &7(%percent%%)"
+    removed_line: "    &8└─ Removed %removed_percent%% of circulating money by tax"
+    section_assessment: "&e&l▸ Overall Assessment:"
+    trend:
+      stable: "&e→ Stable"
+      improve: "Improved"
+      worsen: "Worsened"
+    gini_delta:
+      major: "Significant change"
+      noticeable: "Noticeable change"
+      slight: "Slight change"
+      tiny: "Minimal change"
+    concentration_delta:
+      major: "Significant redistribution"
+      noticeable: "Noticeable redistribution"
+      slight: "Slight redistribution"
+      tiny: "Minimal impact"
+    assessment:
+      strong_improve: "&a&l✓ Policy highly effective; inequality improved significantly"
+      improve: "&a&l✓ Policy effective overall; economy improved"
+      neutral: "&e&l⚠ Neutral effect; consider adjusting rates"
+      worsen: "&c&l✗ Policy may need changes; some metrics worsened"
+      very_bad: "&c&l✗ Poor effect; reassess tax configuration"
   # taxaccount
   tax_account_enabled: "%prefix\n&6Tax account is &aenabled.\n&6Tax account name is &6%tax_account_name%&6.\n&6Tax account balance is &6%tax_account_balance%&6."
   tax_account_disabled: "&6Tax account is &cdisabled."
@@ -134,3 +190,60 @@ messages:
   # sql
   sql_save_error: "&cUnable to save record:"
   sql_clean_error: "&cAn error occurred while cleaning player balances:"
+  # health
+  health:
+    calculating: "&7Calculating economy health..."
+    error: "&cCalculation failed, please check console logs"
+    no_data: "&cNo player data found"
+    title: "&e&l         Economy Health Report"
+    generated_at: "&7Generated at: &f%timestamp%"
+    score_line: "&bScore: %score%/100 &7(%level%)"
+    trend_up: "&7Trend: &c↑ Worsening"
+    trend_down: "&7Trend: &a↓ Improving"
+    trend_stable: "&7Trend: &e→ Stable"
+    details_header: "&e&l▸ Details:"
+    gini_line: "  &7Gini: %gini_colored% &7(Score: &b%gini_score_40%&7/40)"
+    gini_desc_line: "    &8└─ %gini_desc%"
+    concentration_header: "  &7Concentration: (Score: &b%concentration_score_30%&7/30)"
+    top1_line: "    &8• &7Top 1%%: %top1_colored%%% &7wealth"
+    top10_line: "    &8• &7Top 10%%: %top10_colored%%% &7wealth"
+    distribution_header: "  &7Distribution: (Score: &b%distribution_score_30%&7/30)"
+    cv_line: "    &8• &7CV: %cv_colored%"
+    mean_line: "    &8• &7Mean: &f%mean%"
+    median_line: "    &8• &7Median: &f%median%"
+    stddev_line: "    &8• &7Std Dev: &f%stddev%"
+    reco_header: "&e&l▸ Recommendations:"
+    reco:
+      state_excellent_keep: "  &8• &7Excellent state, keep current policies."
+      minor_tune_tax: "  &8• &7Consider minor tax tuning to maintain balance."
+      gini_very_high_progressive: "  &8• &7High inequality: increase progressive taxation."
+      tax_rich_more: "  &8• &7Consider higher tax for wealthy players."
+      raise_high_income_tax_moderate: "  &8• &7Moderately raise top-tier tax rates."
+      wealth_overly_concentrated: "  &8• &7Wealth overly concentrated at the top; redistribution needed."
+      special_tax_cap: "  &8• &7Consider caps or special taxes."
+      concentration_high_moderate_regulation: "  &8• &7High concentration; moderate regulation suggested."
+      cv_very_high_strong_intervention: "  &8• &7Very uneven distribution; strong intervention needed."
+      welfare_support: "  &8• &7Provide welfare or minimum income support."
+      support_middle_class: "  &8• &7Support the middle class."
+      healthy_maintain: "  &8• &7Economy generally healthy; maintain current status."
+    sample_line: "&7Sample Size: &f%player_count% &7players"
+    level:
+      excellent: "Excellent"
+      good: "Good"
+      moderate: "Moderate"
+      poor: "Poor"
+      critical: "Critical"
+      unknown: "Unknown"
+    gini_desc:
+      very_equal: "Very equal distribution"
+      relatively_equal: "Relatively equal distribution"
+      moderate_gap: "Moderate gap"
+      large_gap: "Large gap"
+      very_unequal: "Very unequal distribution"
+
+  # trends
+  trends:
+    loading: "&7Loading trends..."
+    invalid_days: "&cDays must be between 1 and 365"
+    no_data: "&cNo snapshot history yet. Snapshots are generated automatically; please try later."
+    error: "&cFailed to load trends. Please check console logs"

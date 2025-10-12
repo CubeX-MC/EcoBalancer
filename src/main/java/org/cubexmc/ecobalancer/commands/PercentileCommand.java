@@ -6,6 +6,7 @@ import org.bukkit.command.CommandSender;
 import org.cubexmc.ecobalancer.EcoBalancer;
 import org.cubexmc.ecobalancer.utils.MessageUtils;
 import org.cubexmc.ecobalancer.utils.StatisticsUtils;
+import org.cubexmc.ecobalancer.utils.AnalysisFilters;
 
 import java.util.HashMap;
 import java.util.List;
@@ -20,31 +21,23 @@ public class PercentileCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length < 1 || args.length > 3) {
+        // New syntax: <balance> then optional filter tokens (d:, p:, l:, u:, lr:, ur:)
+        if (args.length < 1) {
             sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.perc_usage", null, plugin.getMessagePrefix()));
-            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.perc_limits", null, plugin.getMessagePrefix()));
             return false;
         }
 
         double balance;
-        double low = Double.NEGATIVE_INFINITY;
-        double up = Double.POSITIVE_INFINITY;
-
         try {
             balance = Double.parseDouble(args[0]);
-            if (args.length >= 2) {
-                low = args[1].equals("_") ? Double.NEGATIVE_INFINITY : Double.parseDouble(args[1]);
-            }
-            if (args.length == 3) {
-                up = args[2].equals("_") ? Double.POSITIVE_INFINITY : Double.parseDouble(args[2]);
-            }
         } catch (NumberFormatException e) {
             sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.perc_invalid_args", null, plugin.getMessagePrefix()));
             return false;
         }
 
-        // 收集符合条件的玩家余额
-        List<Double> balances = StatisticsUtils.collectBalancesInRange(low, up);
+        AnalysisFilters.ParseResult pr = AnalysisFilters.parse(java.util.Arrays.copyOfRange(args, 1, args.length));
+        String statsWorld = plugin.getConfig().getString("stats-world", "");
+        List<Double> balances = org.cubexmc.ecobalancer.utils.AnalysisFilters.collectFilteredBalances(pr.criteria, statsWorld);
         
         // 计算百分位数
         double percentile = StatisticsUtils.calculatePercentile(balance, balances);
@@ -53,6 +46,8 @@ public class PercentileCommand implements CommandExecutor {
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("balance", String.format("%.2f", balance));
         placeholders.put("percentile", String.format("%.2f", percentile));
+        double low = pr.criteria.minBalance == null ? Double.NEGATIVE_INFINITY : pr.criteria.minBalance;
+        double up = pr.criteria.maxBalance == null ? Double.POSITIVE_INFINITY : pr.criteria.maxBalance;
         placeholders.put("low", low == Double.NEGATIVE_INFINITY ? "∞" : String.format("%.2f", low));
         placeholders.put("up", up == Double.POSITIVE_INFINITY ? "∞" : String.format("%.2f", up));
         

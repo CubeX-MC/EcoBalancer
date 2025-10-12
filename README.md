@@ -34,16 +34,17 @@ EcoBalancer 目前正在测试中。我们建议在部署前进行严格评估�
 ### 基础命令
 - `/ecobal help`：显示帮助信息
 - `/ecobal reload`：重新加载配置文件
-- `/ecobal checkall`：根据配置设置更新所有离线玩家的余额
+- `/ecobal checkall [filters...]`：根据配置与过滤参数更新玩家余额
 - `/ecobal checkplayer <player>`：根据配置设置更新指定离线玩家的余额
-- `/ecobal stats [bars] [low] [up]`：显示描述性统计和财富分布直方图
-- `/ecobal interval <low> <up> [page]`：列出特定区间内玩家的余额
-- `/ecobal perc <balance> [low] [up]`：显示指定余额在玩家中的百分位数
 
 ### 经济分析命令
-- `/ecobal gini [days]`：计算基尼系数（衡量贫富差距），可选参数仅统计N天内活跃玩家
-- `/ecobal concentration [percentages...]`：财富集中度分析，显示Top N%玩家持有的财富占比（默认1%, 5%, 10%, 20%）
+- `/ecobal gini [filters...]`：计算基尼系数（衡量贫富差距）。支持可选过滤参数（见下文“过滤参数”）。
+- `/ecobal concentration [percentages...] [filters...]`：财富集中度分析，默认显示 Top 1%, 5%, 10%, 20%，也可自定义百分比并附加过滤参数。
+- `/ecobal stats <bars> [filters...]`：显示描述性统计和财富分布直方图，bars 为柱数，其余为过滤参数。
+- `/ecobal interval [filters...] [alphabet|balance] [page]`：按过滤参数筛选玩家余额并分页显示，可选按名称或余额排序。
+- `/ecobal perc <balance> [filters...]`：在给定过滤条件集合下，显示指定余额所处的百分位数。
 - `/ecobal report [operation_id]`：查看税收操作报告，显示征税总额、影响人数、税阶分布等
+- `/ecobal health [filters...]`：通过多项指标检查服务器经济健康状况，支持过滤参数。
 
 ### 记录管理命令
 - `/ecobal checkrecords [page]`：显示所有操作记录
@@ -51,6 +52,37 @@ EcoBalancer 目前正在测试中。我们建议在部署前进行严格评估�
 - `/ecobal restore <operation_id>`：恢复特定操作
 
 **别名**：可以使用 `/eb` 代替 `/ecobal`，例如 `/eb gini` 等同于 `/ecobal gini`
+
+### 过滤参数（适用于 gini / concentration / health / stats / interval / perc / checkall 等分析类命令）
+
+采用 WorldEdit 风格的 `key:value` 参数，可以与位置参数混用、顺序不限；同一维度多条件取交集（更严格者生效）。示例：
+
+- `d:N`：仅统计最近 N 天内活跃的玩家（基于 `lastPlayed`）。
+- `p:N`：仅统计累计在线时长 ≥ N 小时的玩家（从 vanilla `stats/*.json` 读取，插件启动后异步缓存）。
+- `l:X`：仅统计余额 ≥ X 的玩家（下界）。
+- `u:X`：仅统计余额 ≤ X 的玩家（上界）。
+- `lr:P`：仅统计余额 ≥ P 分位阈值（相对下界，P∈[0,100]）。
+- `ur:P`：仅统计余额 ≤ P 分位阈值（相对上界，P∈[0,100]）。
+
+组合规则：
+- 活跃度维度（`d` 与 `p`）与财富维度（`l/u/lr/ur`）做 AND 组合。
+- 财富上下界相互取交集：`min = max(l, percentile(lr))`，`max = min(u, percentile(ur))`；若 `min > max`，结果为空。
+
+示例：
+- `/eb gini d:30 lr:80` 仅统计近 30 天活跃且属于 Top 20% 的玩家；
+- `/eb concentration 1 10 p:50 l:100000 u:10000000` 在线 50 小时以上且余额在 10万-1000万；
+- `/eb stats 20 ur:60` 仅统计不超过 60% 分位的玩家，绘制 20 段直方图。
+- `/eb interval d:30 l:10000 alphabet 2` 近 30 天活跃且余额 ≥1万，按名称排序，第 2 页。
+- `/eb perc 50000 p:20 lr:10 ur:90` 在线≥20 小时、位于 10%-90% 分位集合内时，余额 5 万处于的百分位。
+
+注意：`p` 依赖 vanilla 统计文件，首次加载可能需要数秒；插件会在后台缓存并增量刷新，尽可能降低影响。
+
+### 税收目标过滤（checkall）
+
+- `config.yml` 新增：
+  - `tax-filters: "d:30 p:10 lr:80 l:100000"` 作为 checkall 的默认征税过滤器（可留空表示不过滤）。
+  - `record-zero-deduction: false` 当为 false 时，跳过扣款为 0 的记录写入。
+- 命令：`/ecobal checkall [filters...]` 支持传入与分析命令相同的过滤参数；传参时将覆盖配置中的 `tax-filters`。
 
 ## 配置 (config.yml)
 
@@ -77,6 +109,10 @@ tax-brackets:
    rate: 0.02 # 税率
 tax-account: true # 是否使用税收账户
 tax-account-name: 'tax' # 税收账户名称
+only-offline-players: true
+stats-world: ''
+tax-filters: ''
+record-zero-deduction: false
 ```
 
 [![Forkers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/forks/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/network/members)

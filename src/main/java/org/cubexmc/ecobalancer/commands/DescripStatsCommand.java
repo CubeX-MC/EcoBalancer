@@ -3,9 +3,10 @@ package org.cubexmc.ecobalancer.commands;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
 import org.cubexmc.ecobalancer.EcoBalancer;
 import org.cubexmc.ecobalancer.utils.MessageUtils;
+import org.cubexmc.ecobalancer.utils.AnalysisFilters;
+// removed unused imports
 
 public class DescripStatsCommand implements CommandExecutor {
     private final EcoBalancer plugin;
@@ -16,34 +17,37 @@ public class DescripStatsCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String s, String[] args) {
-        if (args.length < 1 || args.length > 3) {
-            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_usage", null, plugin.getMessagePrefix()));
-            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_limits", null, plugin.getMessagePrefix()));
-            return false;
-        }
+		// Parse filter tokens; first remaining arg must be <bars>
+		AnalysisFilters.ParseResult pr = AnalysisFilters.parse(args);
+		java.util.List<String> rest = pr.remainingArgs;
+		if (rest.isEmpty()) {
+			sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_usage", null, plugin.getMessagePrefix()));
+			sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_limits", null, plugin.getMessagePrefix()));
+			return false;
+		}
 
-        int numBars;
-        double low = Double.NEGATIVE_INFINITY;
-        double up = Double.POSITIVE_INFINITY;
+		int numBars;
+		try {
+			numBars = Integer.parseInt(rest.get(0));
+			if (numBars < 1) {
+				sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_invalid_number_of_bars", null, plugin.getMessagePrefix()));
+				return false;
+			}
+		} catch (NumberFormatException e) {
+			sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_usage", null, plugin.getMessagePrefix()));
+			return false;
+		}
 
-        try {
-            numBars = Integer.parseInt(args[0]);
-            if (numBars < 1) {
-                sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_invalid_number_of_bars", null, plugin.getMessagePrefix()));
-                return false;
-            }
-            if (args.length >= 2) {
-                low = args[1].equals("_") ? Double.NEGATIVE_INFINITY : Double.parseDouble(args[1]);
-            }
-            if (args.length == 3) {
-                up = args[2].equals("_") ? Double.POSITIVE_INFINITY : Double.parseDouble(args[2]);
-            }
-        } catch (NumberFormatException e) {
-            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.stats_invalid_args", null, plugin.getMessagePrefix()));
-            return false;
-        }
+		// Collect balances via filters
+		String statsWorld = plugin.getConfig().getString("stats-world", "");
+		java.util.List<Double> balances = org.cubexmc.ecobalancer.utils.AnalysisFilters.collectFilteredBalances(pr.criteria, statsWorld);
+		if (balances == null || balances.isEmpty()) {
+			sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.gini.no_data", null, plugin.getMessagePrefix()));
+			return true;
+		}
 
-        plugin.generateHistogram(sender, numBars, low, up);
-        return true;
+		// Generate histogram from filtered balances, and preserve original filter tokens for clickable interval links
+		plugin.generateHistogramFromBalances(sender, numBars, balances, args);
+		return true;
     }
 }

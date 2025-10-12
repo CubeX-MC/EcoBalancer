@@ -1,11 +1,9 @@
 package org.cubexmc.ecobalancer.commands;
 
 import net.md_5.bungee.api.chat.ClickEvent;
-import net.md_5.bungee.api.chat.ComponentBuilder;
-import net.md_5.bungee.api.chat.HoverEvent;
+// removed unused ComponentBuilder/HoverEvent imports
 import net.md_5.bungee.api.chat.TextComponent;
-import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
+// removed unused Bukkit/OfflinePlayer imports
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -14,7 +12,7 @@ import org.cubexmc.ecobalancer.utils.DatabaseUtils;
 import org.cubexmc.ecobalancer.utils.MessageUtils;
 import org.cubexmc.ecobalancer.utils.PageUtils;
 
-import java.io.File;
+// removed unused File import
 import java.sql.*;
 import java.sql.Date;
 import java.text.SimpleDateFormat;
@@ -42,6 +40,8 @@ public class CheckRecordsCommand implements CommandExecutor {
             }
         }
 
+        // 进度提示
+        sender.sendMessage(plugin.getFormattedMessage("messages.processing", null));
         // 从数据库中查询所有操作
         try (Connection connection = DatabaseUtils.getConnection(plugin)) {
             List<OperationRecord> operations = fetchOperations(connection, pageSize, pageNumber);
@@ -69,7 +69,7 @@ public class CheckRecordsCommand implements CommandExecutor {
                 TextComponent operationIdComponent = MessageUtils.createClickableComponent(
                     String.valueOf(operation.id),
                     ClickEvent.Action.RUN_COMMAND,
-                    "/checkrecord " + operation.id,
+                    "/ecobal checkrecord " + operation.id,
                     MessageUtils.formatMessage(plugin.getLangConfig(), "messages.records_click", null, plugin.getMessagePrefix())
                 );
                 
@@ -100,14 +100,14 @@ public class CheckRecordsCommand implements CommandExecutor {
             
             if (pageNumber > 1) {
                 prevPage.setText(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.prev_page", null, plugin.getMessagePrefix()));
-                prevPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecords " + (pageNumber - 1)));
+                prevPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ecobal checkrecords " + (pageNumber - 1)));
             } else {
                 prevPage.setText(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.no_prev_page", null, plugin.getMessagePrefix()));
             }
             
             if (pageNumber < totalPages) {
                 nextPage.setText(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.next_page", null, plugin.getMessagePrefix()));
-                nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/checkrecords " + (pageNumber + 1)));
+                nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ecobal checkrecords " + (pageNumber + 1)));
             } else {
                 nextPage.setText(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.no_next_page", null, plugin.getMessagePrefix()));
             }

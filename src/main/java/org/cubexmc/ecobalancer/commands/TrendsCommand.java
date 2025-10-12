@@ -33,16 +33,18 @@ public class TrendsCommand implements CommandExecutor {
             try {
                 days = Integer.parseInt(args[0]);
                 if (days < 1 || days > 365) {
-                    MessageUtils.sendMessage(sender, "&c天数必须在 1-365 之间", plugin.getLogger(), false);
+                    MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.trends.invalid_days", null), plugin.getLogger(), false);
                     return true;
                 }
             } catch (NumberFormatException e) {
-                MessageUtils.sendMessage(sender, "&c无效的天数: " + args[0], plugin.getLogger(), false);
+                MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.trends.invalid_days", null), plugin.getLogger(), false);
                 return true;
             }
         }
 
         final int queryDays = days;
+        // 进度提示
+        MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.trends.loading", null), plugin.getLogger(), false);
         
         // 异步加载数据
         SchedulerUtils.asyncRun(plugin, () -> {
@@ -51,26 +53,23 @@ public class TrendsCommand implements CommandExecutor {
                     DatabaseUtils.getSnapshotHistory(plugin, queryDays, plugin.getLogger());
                 
                 if (snapshots.isEmpty()) {
-                    SchedulerUtils.globalRun(plugin, () -> {
-                        MessageUtils.sendMessage(sender, "&c尚无历史快照数据", plugin.getLogger(), false);
-                        MessageUtils.sendMessage(sender, "&7快照数据由系统自动生成，请稍后再试", 
-                            plugin.getLogger(), false);
-                    }, 0, 0);
+                    SchedulerUtils.runTask(plugin, () -> {
+                        MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.trends.no_data", null), plugin.getLogger(), false);
+                    });
                     return;
                 }
 
                 // 回到主线程发送报告
-                SchedulerUtils.globalRun(plugin, () -> {
+                SchedulerUtils.runTask(plugin, () -> {
                     sendTrendsReport(sender, snapshots, queryDays);
-                }, 0, 0);
+                });
 
             } catch (Exception e) {
                 plugin.getLogger().severe("获取趋势数据失败: " + e.getMessage());
                 e.printStackTrace();
-                SchedulerUtils.globalRun(plugin, () -> {
-                    MessageUtils.sendMessage(sender, "&c获取失败，请查看控制台日志", 
-                        plugin.getLogger(), false);
-                }, 0, 0);
+                SchedulerUtils.runTask(plugin, () -> {
+                    MessageUtils.sendMessage(sender, plugin.getFormattedMessage("messages.trends.error", null), plugin.getLogger(), false);
+                });
             }
         }, 0);
 
@@ -93,13 +92,13 @@ public class TrendsCommand implements CommandExecutor {
         DatabaseUtils.EconomicSnapshot first = snapshots.get(0);
         DatabaseUtils.EconomicSnapshot last = snapshots.get(snapshots.size() - 1);
 
-        msg(sender, "&6&l════════════════════════════════════");
+        msg(sender, plugin.getFormattedMessage("messages.impact.banner", null));
         msg(sender, "&e&l         经济趋势分析报告");
         msg(sender, String.format("&7时间范围: %s ~ %s (&f%d &7天)", 
             dateFormat.format(new Date(first.timestamp)), 
             dateFormat.format(new Date(last.timestamp)), days));
         msg(sender, String.format("&7数据点数: &f%d &7个快照", snapshots.size()));
-        msg(sender, "&6&l════════════════════════════════════");
+        msg(sender, plugin.getFormattedMessage("messages.impact.banner", null));
         msg(sender, "");
 
         // 基尼系数趋势

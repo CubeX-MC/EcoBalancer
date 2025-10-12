@@ -1,0 +1,32 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "maven-build",
+			"type": "shell",
+			"command": "mvn -q -e -DskipTests package",
+			"problemMatcher": [
+				"$javac"
+			],
+			"group": "build"
+		},
+		{
+			"label": "maven-build-2",
+			"type": "shell",
+			"command": "mvn -q -e -DskipTests package",
+			"problemMatcher": [
+				"$javac"
+			],
+			"group": "build"
+		},
+		{
+			"label": "maven-build-3",
+			"type": "shell",
+			"command": "mvn -q -e -DskipTests package",
+			"problemMatcher": [
+				"$javac"
+			],
+			"group": "build"
+		}
+	]
+}
