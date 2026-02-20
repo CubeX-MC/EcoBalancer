@@ -12,12 +12,15 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Dedicated TabCompleter for /ecobal command to keep UtilCommand focused on execution only.
+ * Dedicated TabCompleter for /ecobal command to keep UtilCommand focused on
+ * execution only.
  */
 public class EcoTabCompleter implements TabCompleter {
+    private final EcoBalancer plugin;
     private final UtilCommand util;
 
     public EcoTabCompleter(EcoBalancer plugin, UtilCommand util) {
+        this.plugin = plugin;
         this.util = util;
     }
 
@@ -26,9 +29,10 @@ public class EcoTabCompleter implements TabCompleter {
         List<String> completions = new ArrayList<>();
 
         if (args.length == 1) {
-            String[] subCommands = {"help", "reload", "checkall", "checkplayer", "stats",
+            String[] subCommands = { "help", "reload", "checkall", "checkplayer", "stats",
                     "perc", "checkrecords", "checkrecord", "restore", "interval",
-                    "gini", "concentration", "report", "health", "impact", "trends"};
+                    "gini", "concentration", "report", "health", "impact", "trends",
+                    "tax", "policy", "migrate", "gui" };
             StringUtil.copyPartialMatches(args[0], Arrays.asList(subCommands), completions);
             return completions;
         }
@@ -42,6 +46,17 @@ public class EcoTabCompleter implements TabCompleter {
                     // Delegate to IntervalCommand's own completer if present
                     if (util.getIntervalCommand() != null) {
                         return util.getIntervalCommand().onTabComplete(sender, command, alias, subArgs);
+                    }
+                    break;
+                case "policy":
+                    if (subArgs.length == 1) {
+                        StringUtil.copyPartialMatches(subArgs[0], Arrays.asList("list", "set", "execute"), completions);
+                        return completions;
+                    } else if (subArgs.length == 2
+                            && (subArgs[0].equalsIgnoreCase("set") || subArgs[0].equalsIgnoreCase("execute"))) {
+                        StringUtil.copyPartialMatches(subArgs[1], plugin.getPolicyManager().getPolicyNames(),
+                                completions);
+                        return completions;
                     }
                     break;
                 case "checkplayer":
@@ -60,7 +75,8 @@ public class EcoTabCompleter implements TabCompleter {
                     }
                     break;
                 case "checkrecord":
-                    // Suggest sort options at the second argument; third argument suggests page numbers
+                    // Suggest sort options at the second argument; third argument suggests page
+                    // numbers
                     if (subArgs.length == 1) {
                         // no suggestions for operation id
                         return completions;
@@ -90,17 +106,85 @@ public class EcoTabCompleter implements TabCompleter {
                         return completions;
                     }
                     break;
-                case "report":
-                    // report [operation_id] - no specific completion for IDs
+                case "tax":
+                    if (subArgs.length == 1) {
+                        List<String> taxSubs = Arrays.asList("policy", "show", "schedule", "time", "days",
+                                "dates", "inactive", "clear", "bracket", "mode", "filter",
+                                "account", "save", "reload");
+                        StringUtil.copyPartialMatches(subArgs[0], taxSubs, completions);
+                        return completions;
+                    } else if (subArgs.length == 2) {
+                        switch (subArgs[0].toLowerCase()) {
+                            case "policy":
+                                StringUtil.copyPartialMatches(subArgs[1], Arrays.asList("list", "set", "execute"),
+                                        completions);
+                                return completions;
+                            case "schedule":
+                                StringUtil.copyPartialMatches(subArgs[1], Arrays.asList("daily", "weekly", "monthly"),
+                                        completions);
+                                return completions;
+                            case "time":
+                                StringUtil.copyPartialMatches(subArgs[1],
+                                        Arrays.asList("00:00", "06:00", "12:00", "18:00"),
+                                        completions);
+                                return completions;
+                            case "days":
+                                StringUtil.copyPartialMatches(subArgs[1],
+                                        Arrays.asList("1", "2", "3", "4", "5", "6", "7"),
+                                        completions);
+                                return completions;
+                            case "dates":
+                                StringUtil.copyPartialMatches(subArgs[1], Arrays.asList("1", "15", "28"),
+                                        completions);
+                                return completions;
+                            case "inactive":
+                            case "clear":
+                                StringUtil.copyPartialMatches(subArgs[1], Arrays.asList("30", "60", "90", "180", "365"),
+                                        completions);
+                                return completions;
+                            case "mode":
+                                StringUtil.copyPartialMatches(subArgs[1], Arrays.asList("absolute", "percentile"),
+                                        completions);
+                                return completions;
+                            case "bracket":
+                                StringUtil.copyPartialMatches(subArgs[1],
+                                        Arrays.asList("add", "remove", "list", "clear"), completions);
+                                return completions;
+                            case "account":
+                                StringUtil.copyPartialMatches(subArgs[1], Arrays.asList("enable", "disable", "name"),
+                                        completions);
+                                return completions;
+                        }
+                    } else if (subArgs.length == 3 && subArgs[0].equalsIgnoreCase("policy")) {
+                        if (subArgs[1].equalsIgnoreCase("set") || subArgs[1].equalsIgnoreCase("execute")) {
+                            StringUtil.copyPartialMatches(subArgs[2], plugin.getPolicyManager().getPolicyNames(),
+                                    completions);
+                            return completions;
+                        }
+                    } else if (subArgs.length == 3) {
+                        if (subArgs[0].equalsIgnoreCase("bracket") && subArgs[1].equalsIgnoreCase("remove")) {
+                            // Suggest existing brackets
+                            List<String> brackets = new ArrayList<>();
+                            org.cubexmc.ecobalancer.policies.TaxPolicy p = plugin.getPolicyManager().getActivePolicy();
+                            if (p != null) {
+                                p.getTaxBrackets().forEach(m -> brackets.add(String.valueOf(m.get("threshold"))));
+                            }
+                            StringUtil.copyPartialMatches(subArgs[2], brackets, completions);
+                            return completions;
+                        } else if (subArgs[0].equalsIgnoreCase("account") && subArgs[1].equalsIgnoreCase("name")) {
+                            List<String> names = new ArrayList<>();
+                            names.add("tax"); // default
+                            Bukkit.getOnlinePlayers().forEach(p -> names.add(p.getName()));
+                            StringUtil.copyPartialMatches(subArgs[2], names, completions);
+                            return completions;
+                        }
+                    }
                     break;
-                case "perc":
-                case "checkrecords":
-                case "restore":
-                case "checkall":
-                case "help":
-                case "reload":
-                default:
-                    // No specific completion
+                case "migrate":
+                    if (subArgs.length == 1) {
+                        StringUtil.copyPartialMatches(subArgs[0], Arrays.asList("check", "run", "backup"), completions);
+                        return completions;
+                    }
                     break;
             }
         }

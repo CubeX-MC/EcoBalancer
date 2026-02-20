@@ -46,7 +46,9 @@ public final class PlaytimeUtils {
                 long ticks = extractTicks(f);
                 playtimeTicks.put(uuid, ticks);
                 fileMtime.put(uuid, lm);
-            } catch (Throwable ignored) {}
+            } catch (Throwable t) {
+                Bukkit.getLogger().fine("[EcoBalancer] Failed to load playtime cache for " + f.getName() + ": " + t.getMessage());
+            }
         }
     }
 
@@ -105,7 +107,12 @@ public final class PlaytimeUtils {
     }
 
     private static long safeLong(JsonElement el) {
-        try { return el.getAsLong(); } catch (Throwable ignored) { return 0L; }
+        try {
+            return el.getAsLong();
+        } catch (Throwable t) {
+            Bukkit.getLogger().fine("[EcoBalancer] Failed to parse playtime value: " + t.getMessage());
+            return 0L;
+        }
     }
 }
 

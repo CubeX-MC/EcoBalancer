@@ -24,6 +24,8 @@ public class UtilCommand implements CommandExecutor {
     private final HealthCommand healthCommand;
     private final ImpactCommand impactCommand;
     private final TrendsCommand trendsCommand;
+    private final TaxCommand taxCommand;
+    private final MigrateCommand migrateCommand;
 
     public UtilCommand(EcoBalancer plugin) {
         this.plugin = plugin;
@@ -41,6 +43,8 @@ public class UtilCommand implements CommandExecutor {
         this.healthCommand = new HealthCommand(plugin);
         this.impactCommand = new ImpactCommand(plugin);
         this.trendsCommand = new TrendsCommand(plugin);
+        this.taxCommand = new TaxCommand(plugin);
+        this.migrateCommand = new MigrateCommand(plugin);
     }
 
     @Override
@@ -52,6 +56,11 @@ public class UtilCommand implements CommandExecutor {
         }
 
         String subCommand = args[0].toLowerCase();
+        String permissionNode = getPermissionNode(subCommand);
+        if (permissionNode != null && !sender.hasPermission(permissionNode)) {
+            sender.sendMessage(plugin.getFormattedMessage("messages.no_permission", null));
+            return true;
+        }
         String[] subArgs = Arrays.copyOfRange(args, 1, args.length);
 
         switch (subCommand) {
@@ -92,9 +101,74 @@ public class UtilCommand implements CommandExecutor {
                 return impactCommand.onCommand(sender, command, label, subArgs);
             case "trends":
                 return trendsCommand.onCommand(sender, command, label, subArgs);
+            case "tax":
+                return taxCommand.onCommand(sender, command, label, subArgs);
+            case "migrate":
+                return migrateCommand.onCommand(sender, command, label, subArgs);
+            case "policy":
+                // Route to TaxCommand treating 'policy' as the subcommand
+                String[] taxArgs = new String[subArgs.length + 1];
+                taxArgs[0] = "policy";
+                System.arraycopy(subArgs, 0, taxArgs, 1, subArgs.length);
+                return taxCommand.onCommand(sender, command, label, taxArgs);
+            case "gui":
+                if (!(sender instanceof org.bukkit.entity.Player)) {
+                    sender.sendMessage(plugin.getFormattedMessage("messages.command_player_only", null));
+                    return true;
+                }
+                if (!sender.hasPermission("ecobalancer.gui.view")) {
+                    sender.sendMessage(plugin.getFormattedMessage("messages.no_permission", null));
+                    return true;
+                }
+                plugin.getGuiManager().openMainMenu((org.bukkit.entity.Player) sender);
+                return true;
             default:
                 sender.sendMessage(plugin.getFormattedMessage("messages.unknown_command", null));
                 return false;
+        }
+    }
+
+    private String getPermissionNode(String subCommand) {
+        switch (subCommand) {
+            case "reload":
+                return "ecobalancer.command.reload";
+            case "checkall":
+                return "ecobalancer.command.checkall";
+            case "checkplayer":
+                return "ecobalancer.command.checkplayer";
+            case "stats":
+                return "ecobalancer.command.stats";
+            case "perc":
+                return "ecobalancer.command.perc";
+            case "checkrecords":
+                return "ecobalancer.command.checkrecords";
+            case "checkrecord":
+                return "ecobalancer.command.checkrecord";
+            case "restore":
+                return "ecobalancer.command.restore";
+            case "interval":
+                return "ecobalancer.command.interval";
+            case "gini":
+                return "ecobalancer.command.gini";
+            case "concentration":
+                return "ecobalancer.command.concentration";
+            case "report":
+                return "ecobalancer.command.report";
+            case "health":
+                return "ecobalancer.command.health";
+            case "impact":
+                return "ecobalancer.command.impact";
+            case "trends":
+                return "ecobalancer.command.trends";
+            case "tax":
+            case "policy":
+                return "ecobalancer.command.tax";
+            case "migrate":
+                return "ecobalancer.command.migrate";
+            case "gui":
+                return "ecobalancer.gui.view";
+            default:
+                return null;
         }
     }
 
@@ -116,13 +190,27 @@ public class UtilCommand implements CommandExecutor {
                 plugin.getFormattedMessage("messages.commands.health", null),
                 plugin.getFormattedMessage("messages.commands.impact", null),
                 plugin.getFormattedMessage("messages.commands.trends", null),
+                plugin.getFormattedMessage("messages.commands.tax", null),
+                plugin.getFormattedMessage("messages.commands.policy", null),
+                plugin.getFormattedMessage("messages.commands.migrate", null),
+                plugin.getFormattedMessage("messages.commands.gui", null),
                 plugin.getFormattedMessage("messages.commands.reload", null),
                 plugin.getFormattedMessage("messages.help_footer", null)
         };
-        for (String str : commandMessages) sender.sendMessage(str);
+        for (String str : commandMessages)
+            sender.sendMessage(str);
     }
 
     // Expose subcommands for completer routing
-    public IntervalCommand getIntervalCommand() { return intervalCommand; }
-    public CheckRecordCommand getCheckRecordCommand() { return checkRecordCommand; }
+    public IntervalCommand getIntervalCommand() {
+        return intervalCommand;
+    }
+
+    public CheckRecordCommand getCheckRecordCommand() {
+        return checkRecordCommand;
+    }
+
+    public TaxCommand getTaxCommand() {
+        return taxCommand;
+    }
 }

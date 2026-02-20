@@ -33,7 +33,8 @@ public class MessageUtils {
         
         String message = config.getString(path, "Message not found!");
         for (Map.Entry<String, String> entry : placeholders.entrySet()) {
-            message = message.replace("%" + entry.getKey() + "%", entry.getValue());
+            String value = entry.getValue() == null ? "" : entry.getValue();
+            message = message.replace("%" + entry.getKey() + "%", value);
         }
         
         return ChatColor.translateAlternateColorCodes('&', message);
@@ -69,10 +70,12 @@ public class MessageUtils {
                     }
                 }
                 if (!isClickable) {
-                    message = message.replace("%" + entry.getKey() + "%", entry.getValue());
+                    String value = entry.getValue() == null ? "" : entry.getValue();
+                    message = message.replace("%" + entry.getKey() + "%", value);
                 }
             } else {
-                message = message.replace("%" + entry.getKey() + "%", entry.getValue());
+                String value = entry.getValue() == null ? "" : entry.getValue();
+                message = message.replace("%" + entry.getKey() + "%", value);
             }
         }
         

@@ -11,6 +11,7 @@ import org.cubexmc.ecobalancer.EcoBalancer;
 import org.cubexmc.ecobalancer.utils.DatabaseUtils;
 import org.cubexmc.ecobalancer.utils.MessageUtils;
 import org.cubexmc.ecobalancer.utils.PageUtils;
+import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
 // removed unused File import
 import java.sql.*;
@@ -42,98 +43,97 @@ public class CheckRecordsCommand implements CommandExecutor {
 
         // 进度提示
         sender.sendMessage(plugin.getFormattedMessage("messages.processing", null));
-        // 从数据库中查询所有操作
+        final int finalPageNumber = pageNumber;
+        SchedulerUtils.runTaskAsync(plugin, () -> loadAndSendRecords(sender, pageSize, finalPageNumber));
+
+        return true;
+    }
+
+    private void loadAndSendRecords(CommandSender sender, int pageSize, int pageNumber) {
         try (Connection connection = DatabaseUtils.getConnection(plugin)) {
             List<OperationRecord> operations = fetchOperations(connection, pageSize, pageNumber);
-            
-            // 显示记录列表
-            if (operations.isEmpty()) {
-                sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.no_records", null, plugin.getMessagePrefix()));
-                return true;
-            }
-            
-            // 显示页头
-            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.records_header", null, plugin.getMessagePrefix()));
-            
-            // 显示每条记录
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            for (OperationRecord operation : operations) {
-                Map<String, String> placeholders = new HashMap<>();
-                placeholders.put("time", dateFormat.format(new Date(operation.timestamp)));
-                placeholders.put("type", operation.isCheckAll ? "A" : "P");
-                placeholders.put("deduction_amount", String.format("%.2f", operation.totalDeduction));
-                placeholders.put("operation_id", String.valueOf(operation.id));
-                placeholders.put("restored", operation.isRestored ? "x" : " ");
+            int totalRecords = getTotalOperationsCount(connection);
+            int totalPages = PageUtils.calculateTotalPages(totalRecords, pageSize);
+            SchedulerUtils.runTask(plugin, () -> renderOperations(sender, operations, pageNumber, totalPages));
+        } catch (SQLException e) {
+            Map<String, String> placeholders = new HashMap<>();
+            placeholders.put("error", e.getMessage() == null ? "unknown" : e.getMessage());
+            SchedulerUtils.runTask(plugin, () -> sender.sendMessage(
+                    MessageUtils.formatMessage(plugin.getLangConfig(), "messages.records_error", placeholders,
+                            plugin.getMessagePrefix())));
+        }
+    }
 
-                // 创建可点击的 operation_id 组件
-                TextComponent operationIdComponent = MessageUtils.createClickableComponent(
+    private void renderOperations(CommandSender sender, List<OperationRecord> operations, int pageNumber, int totalPages) {
+        if (operations.isEmpty()) {
+            sender.sendMessage(
+                    MessageUtils.formatMessage(plugin.getLangConfig(), "messages.no_records", null, plugin.getMessagePrefix()));
+            return;
+        }
+
+        sender.sendMessage(
+                MessageUtils.formatMessage(plugin.getLangConfig(), "messages.records_header", null, plugin.getMessagePrefix()));
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        for (OperationRecord operation : operations) {
+            Map<String, String> placeholders = new HashMap<>();
+            placeholders.put("time", dateFormat.format(new Date(operation.timestamp)));
+            placeholders.put("type", operation.isCheckAll ? "A" : "P");
+            placeholders.put("deduction_amount", String.format("%.2f", operation.totalDeduction));
+            placeholders.put("operation_id", String.valueOf(operation.id));
+            placeholders.put("restored", operation.isRestored ? "x" : " ");
+
+            TextComponent operationIdComponent = MessageUtils.createClickableComponent(
                     String.valueOf(operation.id),
                     ClickEvent.Action.RUN_COMMAND,
                     "/ecobal checkrecord " + operation.id,
-                    MessageUtils.formatMessage(plugin.getLangConfig(), "messages.records_click", null, plugin.getMessagePrefix())
-                );
-                
-                TextComponent messageFormat = MessageUtils.formatComponent(
+                    MessageUtils.formatMessage(plugin.getLangConfig(), "messages.records_click", null, plugin.getMessagePrefix()));
+
+            TextComponent messageFormat = MessageUtils.formatComponent(
                     plugin.getLangConfig(),
                     "messages.records_operation",
                     placeholders,
-                    new String[]{"operation_id"},
-                    new TextComponent[]{operationIdComponent},
-                    plugin.getMessagePrefix()
-                );
+                    new String[] { "operation_id" },
+                    new TextComponent[] { operationIdComponent },
+                    plugin.getMessagePrefix());
+            sender.spigot().sendMessage(messageFormat);
+        }
 
-                // 发送拼接后的文本组件
-                sender.spigot().sendMessage(messageFormat);
-            }
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("page", String.valueOf(pageNumber));
+        placeholders.put("total", String.valueOf(totalPages));
 
-            // 显示分页导航
-            int totalRecords = getTotalOperationsCount(connection);
-            int totalPages = PageUtils.calculateTotalPages(totalRecords, pageSize);
-            
-            Map<String, String> placeholders = new HashMap<>();
-            placeholders.put("page", String.valueOf(pageNumber));
-            placeholders.put("total", String.valueOf(totalPages));
+        TextComponent prevPage = new TextComponent();
+        TextComponent nextPage = new TextComponent();
+        if (pageNumber > 1) {
+            prevPage.setText(
+                    MessageUtils.formatMessage(plugin.getLangConfig(), "messages.prev_page", null, plugin.getMessagePrefix()));
+            prevPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ecobal checkrecords " + (pageNumber - 1)));
+        } else {
+            prevPage.setText(
+                    MessageUtils.formatMessage(plugin.getLangConfig(), "messages.no_prev_page", null, plugin.getMessagePrefix()));
+        }
+        if (pageNumber < totalPages) {
+            nextPage.setText(
+                    MessageUtils.formatMessage(plugin.getLangConfig(), "messages.next_page", null, plugin.getMessagePrefix()));
+            nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ecobal checkrecords " + (pageNumber + 1)));
+        } else {
+            nextPage.setText(
+                    MessageUtils.formatMessage(plugin.getLangConfig(), "messages.no_next_page", null, plugin.getMessagePrefix()));
+        }
+        placeholders.put("prev", prevPage.toPlainText());
+        placeholders.put("next", nextPage.toPlainText());
 
-            // 创建上一页和下一页按钮
-            TextComponent prevPage = new TextComponent();
-            TextComponent nextPage = new TextComponent();
-            
-            if (pageNumber > 1) {
-                prevPage.setText(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.prev_page", null, plugin.getMessagePrefix()));
-                prevPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ecobal checkrecords " + (pageNumber - 1)));
-            } else {
-                prevPage.setText(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.no_prev_page", null, plugin.getMessagePrefix()));
-            }
-            
-            if (pageNumber < totalPages) {
-                nextPage.setText(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.next_page", null, plugin.getMessagePrefix()));
-                nextPage.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/ecobal checkrecords " + (pageNumber + 1)));
-            } else {
-                nextPage.setText(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.no_next_page", null, plugin.getMessagePrefix()));
-            }
-            
-            placeholders.put("prev", prevPage.toPlainText());
-            placeholders.put("next", nextPage.toPlainText());
-
-            TextComponent message = MessageUtils.formatComponent(
+        TextComponent message = MessageUtils.formatComponent(
                 plugin.getLangConfig(),
                 "messages.records_page",
                 placeholders,
-                new String[]{"prev", "next"},
-                new TextComponent[]{prevPage, nextPage},
-                plugin.getMessagePrefix()
-            );
-            
-            sender.spigot().sendMessage(message);
-            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.records_footer", null, plugin.getMessagePrefix()));
-            
-        } catch (SQLException e) {
-            Map<String, String> placeholders = new HashMap<>();
-            placeholders.put("error", e.getMessage());
-            sender.sendMessage(MessageUtils.formatMessage(plugin.getLangConfig(), "messages.records_error", placeholders, plugin.getMessagePrefix()));
-        }
+                new String[] { "prev", "next" },
+                new TextComponent[] { prevPage, nextPage },
+                plugin.getMessagePrefix());
 
-        return true;
+        sender.spigot().sendMessage(message);
+        sender.sendMessage(
+                MessageUtils.formatMessage(plugin.getLangConfig(), "messages.records_footer", null, plugin.getMessagePrefix()));
     }
     
     /**

@@ -1,3 +1,4 @@
+lang-version: 2
 prefix: '&7[&6EcoBalancer&7]&r'
 messages:
   # reload
@@ -19,6 +20,10 @@ messages:
     health: '&f/ecobal health &6- 经济健康报告'
     impact: '&f/ecobal impact [operation_id] &6- 税收影响分析'
     trends: '&f/ecobal trends [days] &6- 经济趋势报告'
+    tax: '&f/ecobal tax &6- 管理税收配置'
+    policy: '&f/ecobal policy <list|set|execute> &6- 通过 tax 命令管理策略'
+    migrate: '&f/ecobal migrate &6- 管理配置迁移'
+    gui: '&f/ecobal gui &6- 打开 EcoBalancer 图形界面'
     reload: '&f/ecobal reload &6- 重载配置文件'
   help_footer: '&7&o来自&c&lCube&f&lX&7&o统治阶级工具包'
   help_header: '&e&lEcoBalancer &f帮助:'
@@ -26,6 +31,8 @@ messages:
   next_page: "&6下一页"
   no_prev_page: "   "
   no_next_page: "   "
+  no_permission: "&c你没有权限使用此命令。"
+  command_player_only: "&c该命令只能由玩家执行。"
   processing: "%prefix% &7正在处理，请稍候..."
   # check
   scanning_offline_players: '&7正在扫描离线玩家&f...'
@@ -41,6 +48,9 @@ messages:
   all_players_processed: "&a所有玩家都已被洗劫:D"
   zero_balance: "&6玩家 &4%player% &6的余额为 &c0&6!"
   player_not_found: "&c没找到该玩家 &f(大小写敏感)。"
+  policy_not_found: "&c未找到策略: &f%name%"
+  executing_policy: "&7正在对 &f%player_count% &7名玩家执行策略 &e%policy% &7..."
+  policy_executed: "&a策略 &e%policy% &a执行完成！"
   # records
   invalid_page: "&c无效的页码。"
   records_header: "&f&l税收操作记录:"
@@ -57,7 +67,7 @@ messages:
   record_all_header: "&6操作 &4%operation_id% &6的详细信息 &f(全服检查):"
   record_all_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction%"
   record_page: "%prev% &f第 &4%page% &f页,共 &4%total% &f页 %next%"
-  record_footer: "&7&o使用 /checkrecords <操作ID> [页码] 查看更多。"
+  record_footer: "&7&o使用 /checkrecord <操作ID> [alphabet|deduction] [页码] 查看更多。"
   record_player_header: "&a操作 %operation_id% 的详细信息 (玩家检查):"
   record_player_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction%"
   record_operation_not_found: "&c未找到操作!"
@@ -150,7 +160,7 @@ messages:
       worsen: "&c&l✗ 税收政策可能需要调整，部分指标恶化"
       very_bad: "&c&l✗ 税收政策效果不佳，建议重新评估税率设置"
   # taxaccount
-  tax_account_enabled: "%prefix\n&6税金账户&a已启用。\n&6税金账户名称为 &6%tax_account_name%&6。\n&6税金账户余额为 &6%tax_account_balance%&6。"
+  tax_account_enabled: "%prefix%\n&6税金账户&a已启用。\n&6税金账户名称为 &6%tax_account_name%&6。\n&6税金账户余额为 &6%tax_account_balance%&6。"
   tax_account_disabled: "&6税金账户&c未启用。"
   # gini
   gini:
@@ -247,3 +257,110 @@ messages:
     invalid_days: "&c天数必须在 1-365 之间"
     no_data: "&c尚无历史快照数据，快照由系统自动生成，请稍后再试"
     error: "&c获取趋势数据失败，请查看控制台日志"
+
+  # tax
+  tax:
+    usage: "&f用法: /eb tax <show|schedule|time|days|dates|inactive|clear|bracket|mode|filter|account|save|reset>"
+    show_header: "&e&l━━━━━━━ 当前税收配置 ━━━━━━━"
+    schedule_line: "&7计划: &f%type% &7于 &f%time%"
+    days_of_week_line: "&7每周天数: &f%days%"
+    dates_of_month_line: "&7每月日期: &f%dates%"
+    inactive_deduct_line: "&7开始扣税离线天数: &f%days% &7天"
+    inactive_clear_line: "&7清空余额离线天数: &f%days% &7天"
+    mode_line: "&7阈值模式: &f%mode%"
+    filter_line: "&7默认过滤器: &f%filter%"
+    account_line: "&7税金账户: %status% &7(&f%name%&7)"
+    brackets_header: "&7税率档位:"
+    bracket_line: "  &7• &f%threshold% &7→ &e%rate%"
+
+    set_schedule: "&a征税计划已设置为 &f%type%"
+    set_time: "&a征税时间已设置为 &f%time%"
+    set_days: "&a每周征税天数已设置为 &f%days%"
+    set_dates: "&a每月征税日期已设置为 &f%dates%"
+    set_inactive_deduct: "&a开始扣税离线天数已设置为 &f%days%"
+    set_inactive_clear: "&a清空余额离线天数已设置为 &f%days%"
+    set_mode: "&a阈值模式已设置为 &f%mode%"
+    set_filter: "&a默认征税过滤器已设置为 &f%filter%"
+    bracket_added: "&a已添加税率档位: &f%threshold% &7→ &e%rate%"
+    bracket_removed: "&a已移除税率档位: &f%threshold%"
+    brackets_cleared: "&a已清空所有税率档位"
+    account_enabled: "&a税金账户已启用"
+    account_disabled: "&c税金账户已禁用"
+    account_name_set: "&a税金账户名称已设置为 &f%name%"
+    saved: "&a配置已保存到 config.yml"
+    reset: "&e配置已从 config.yml 重新加载"
+    reload_policies: "&a已从磁盘重新加载所有策略。"
+    policy_usage: "&6/eb tax policy <list|set|execute> &7- 管理税收策略"
+    policy_list_header: "&6已加载策略:"
+    policy_item_active: " &a➤ %name% &7(当前启用)"
+    policy_item_inactive: " &7- %name%"
+    policy_set_usage: "&c用法: /eb tax policy set <name>"
+    policy_set_success: "&a当前策略已设置为: %name%"
+    policy_execute_usage: "&c用法: /eb tax policy execute <name>"
+    policy_execute_hint: "&7立即执行指定策略，但不修改当前启用策略。"
+    policy_execute_start: "&e正在执行策略: &6%name%"
+    unknown_action: "&c未知操作。可用: list, set, execute。"
+    no_active_policy_selected: "&c当前没有启用策略！"
+    active_policy_line: "&7当前策略: &e%name%"
+    no_active_policy_found: "&c未找到当前启用策略。"
+    unsaved_changes: "&e⚠ 策略 '%policy%' 有未保存更改，请使用 /eb tax save 保存。"
+    brackets_empty: "  &7(未配置税率档位)"
+    schedule_usage: "&c用法: /eb tax schedule <daily|weekly|monthly>"
+    error_invalid_schedule_type: "&c无效的计划类型。可用: daily, weekly, monthly"
+    time_usage: "&c用法: /eb tax time <HH:mm>"
+    days_usage: "&c用法: /eb tax days <1-7...> (1=周日, 7=周六)"
+    dates_usage: "&c用法: /eb tax dates <1-31...>"
+    inactive_usage: "&c用法: /eb tax inactive <days>"
+    clear_usage: "&c用法: /eb tax clear <days>"
+    bracket_usage: "&c用法: /eb tax bracket <add|remove|list|clear>"
+    bracket_add_usage: "&c用法: /eb tax bracket add <threshold> <rate>"
+    bracket_add_example: "&7示例: /eb tax bracket add 100000 0.01"
+    bracket_remove_usage: "&c用法: /eb tax bracket remove <threshold>"
+    mode_usage: "&c用法: /eb tax mode <absolute|percentile>"
+    account_usage: "&c用法: /eb tax account <enable|disable|name>"
+
+    error_invalid_time: "&c时间格式无效，请使用 HH:mm（例如 20:00）"
+    error_invalid_rate: "&c税率必须在 0 到 1 之间（例如 0.05）"
+    error_invalid_threshold: "&c阈值必须为正数"
+    error_invalid_days: "&c天数必须在 1-7 之间（1=周日, 7=周六）"
+    error_invalid_dates: "&c日期必须在 1-31 之间"
+    error_bracket_not_found: "&c未找到阈值为 %threshold% 的税率档位"
+    error_no_changes: "&e没有可保存的更改"
+    error_days_positive: "&c天数必须是正数"
+    error_invalid_number: "&c数字格式无效"
+    error_invalid_threshold_or_rate: "&c阈值或税率无效。"
+    error_invalid_number_format: "&c数字格式无效"
+    error_invalid_threshold_format: "&c阈值格式无效"
+    error_invalid_mode: "&c模式无效。"
+    error_save_failed: "&c保存配置失败: %error%"
+
+  # migration
+  migration:
+    backup_created: "&7已创建备份: %filename%"
+    config_upgraded: "&a配置已从 v%old% 升级到 v%new%"
+    lang_upgraded: "&a语言文件已从 v%old% 升级到 v%new%"
+    new_options_added: "&7配置中已添加新选项，请检查 config.yml。"
+    command_usage: "&c用法: /eb migrate <check|run|backup>"
+    status_check: "&e迁移状态检查:"
+    status_config_line: "&7配置文件: %status%"
+    status_lang_line: "&7语言文件 (%lang%): %status%"
+    hint_run: "&e使用 '/eb migrate run' 执行迁移。"
+    run_starting: "&7正在开始迁移..."
+    run_config_migrated: "&a配置迁移完成。"
+    run_config_reloaded: "&7插件配置已重载。"
+    run_config_not_needed: "&7配置无需迁移。"
+    run_lang_migrated: "&a语言文件 (%lang%) 迁移完成。"
+    run_lang_not_needed: "&7语言文件无需迁移。"
+    backup_starting: "&7正在创建备份..."
+    backup_done: "&a备份已在插件目录创建。"
+    backup_lang_missing: "&e配置文件已备份，但未找到语言文件。"
+  gui:
+    main_menu_title: "&6EcoBalancer 菜单"
+    dashboard_title: "&6经济仪表盘"
+    tax_policies_title: "&6税收策略"
+    policy_title_prefix: "&6策略: "
+    no_permission_tax_policies: "&c你没有权限访问税收策略菜单。"
+    executing_active_policy: "&e正在执行当前策略: &6%name%"
+    no_active_policy: "&c当前没有可执行的策略！"
+    policies_reloaded: "&a策略已重新加载。"
+    executing_policy: "&e正在执行策略: &6%name%"

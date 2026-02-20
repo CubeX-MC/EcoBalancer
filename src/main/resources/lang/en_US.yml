@@ -1,3 +1,4 @@
+lang-version: 2
 prefix: '&7[&6EcoBalancer&7]&r'
 messages:
   # reload
@@ -19,6 +20,10 @@ messages:
     health: '&f/ecobal health &6- Economy health report'
     impact: '&f/ecobal impact [operation_id] &6- Tax impact analysis'
     trends: '&f/ecobal trends [days] &6- Economy trends report'
+    tax: '&f/ecobal tax &6- Manage tax configuration'
+    policy: '&f/ecobal policy <list|set|execute> &6- Manage policies via tax command'
+    migrate: '&f/ecobal migrate &6- Manage configuration migration'
+    gui: '&f/ecobal gui &6- Open EcoBalancer GUI'
     reload: '&f/ecobal reload &6- Reload configuration file'
   help_footer: '&7&oFrom &c&lCube&f&lX&7&o ruling class toolkit'
   help_header: '&e&lEcoBalancer &fHelp:'
@@ -26,6 +31,8 @@ messages:
   next_page: "&6Next Page"
   no_prev_page: "   "
   no_next_page: "   "
+  no_permission: "&cYou do not have permission to use this command."
+  command_player_only: "&cThis command can only be used by players."
   processing: "%prefix% &7Processing, please wait..."
   # check
   scanning_offline_players: '&7Scanning offline players&f...'
@@ -41,6 +48,9 @@ messages:
   all_players_processed: "&aAll players have been robbed :D"
   zero_balance: "&6Player &4%player%&6's balance is &c0&6!"
   player_not_found: "&cPlayer not found &f(case-sensitive)."
+  policy_not_found: "&cPolicy not found: &f%name%"
+  executing_policy: "&7Executing policy &e%policy% &7on &f%player_count% &7players..."
+  policy_executed: "&aPolicy &e%policy% &aexecuted successfully!"
   # records
   invalid_page: "&cInvalid page number."
   records_header: "&f&lTax Operation Records:"
@@ -150,7 +160,7 @@ messages:
       worsen: "&c&l✗ Policy may need changes; some metrics worsened"
       very_bad: "&c&l✗ Poor effect; reassess tax configuration"
   # taxaccount
-  tax_account_enabled: "%prefix\n&6Tax account is &aenabled.\n&6Tax account name is &6%tax_account_name%&6.\n&6Tax account balance is &6%tax_account_balance%&6."
+  tax_account_enabled: "%prefix%\n&6Tax account is &aenabled.\n&6Tax account name is &6%tax_account_name%&6.\n&6Tax account balance is &6%tax_account_balance%&6."
   tax_account_disabled: "&6Tax account is &cdisabled."
   # gini
   gini:
@@ -247,3 +257,110 @@ messages:
     invalid_days: "&cDays must be between 1 and 365"
     no_data: "&cNo snapshot history yet. Snapshots are generated automatically; please try later."
     error: "&cFailed to load trends. Please check console logs"
+
+  # tax
+  tax:
+    usage: "&fUsage: /eb tax <show|schedule|time|days|dates|inactive|clear|bracket|mode|filter|account|save|reset>"
+    show_header: "&e&l━━━━━━━ Current Tax Configuration ━━━━━━━"
+    schedule_line: "&7Schedule: &f%type% &7at &f%time%"
+    days_of_week_line: "&7Days of Week: &f%days%"
+    dates_of_month_line: "&7Dates of Month: &f%dates%"
+    inactive_deduct_line: "&7Inactive to Deduct: &f%days% &7days"
+    inactive_clear_line: "&7Inactive to Clear: &f%days% &7days"
+    mode_line: "&7Threshold Mode: &f%mode%"
+    filter_line: "&7Default Filter: &f%filter%"
+    account_line: "&7Tax Account: %status% &7(&f%name%&7)"
+    brackets_header: "&7Tax Brackets:"
+    bracket_line: "  &7• &f%threshold% &7→ &e%rate%"
+    
+    set_schedule: "&aTax schedule set to &f%type%"
+    set_time: "&aTax time set to &f%time%"
+    set_days: "&aDays of week set to &f%days%"
+    set_dates: "&aDates of month set to &f%dates%"
+    set_inactive_deduct: "&aInactive days to deduct set to &f%days%"
+    set_inactive_clear: "&aInactive days to clear set to &f%days%"
+    set_mode: "&aThreshold mode set to &f%mode%"
+    set_filter: "&aDefault tax filter set to &f%filter%"
+    bracket_added: "&aTax bracket added: &f%threshold% &7→ &e%rate%"
+    bracket_removed: "&aTax bracket removed: &f%threshold%"
+    brackets_cleared: "&aAll tax brackets cleared"
+    account_enabled: "&aTax account enabled"
+    account_disabled: "&cTax account disabled"
+    account_name_set: "&aTax account name set to &f%name%"
+    saved: "&aConfiguration saved to config.yml"
+    reset: "&eConfiguration reset from config.yml"
+    
+    error_invalid_time: "&cInvalid time format. Use HH:mm (e.g., 20:00)"
+    error_invalid_rate: "&cRate must be between 0 and 1 (e.g., 0.05)"
+    error_invalid_threshold: "&cThreshold must be a positive number"
+    error_invalid_days: "&cDays must be between 1-7 (1=Sunday, 7=Saturday)"
+    error_invalid_dates: "&cDates must be between 1-31"
+    error_bracket_not_found: "&cNo bracket found with threshold %threshold%"
+    error_no_changes: "&eNo changes to save"
+    reload_policies: "&aReloaded all policies from disk."
+    policy_usage: "&6/eb tax policy <list|set|execute> &7- Manage tax policies"
+    policy_list_header: "&6Loaded Policies:"
+    policy_item_active: " &a➤ %name% &7(Active)"
+    policy_item_inactive: " &7- %name%"
+    policy_set_usage: "&cUsage: /eb tax policy set <name>"
+    policy_set_success: "&aActive policy set to: %name%"
+    policy_execute_usage: "&cUsage: /eb tax policy execute <name>"
+    policy_execute_hint: "&7Executes the specified policy immediately without changing the active policy."
+    policy_execute_start: "&eExecuting policy: &6%name%"
+    unknown_action: "&cUnknown action. Use list, set, or execute."
+    no_active_policy_selected: "&cNo active policy selected!"
+    active_policy_line: "&7Active Policy: &e%name%"
+    no_active_policy_found: "&cNo active policy found."
+    unsaved_changes: "&e⚠ You have unsaved changes to '%policy%'. Use /eb tax save to persist."
+    brackets_empty: "  &7(no brackets configured)"
+    schedule_usage: "&cUsage: /eb tax schedule <daily|weekly|monthly>"
+    error_invalid_schedule_type: "&cInvalid schedule type. Use: daily, weekly, or monthly"
+    time_usage: "&cUsage: /eb tax time <HH:mm>"
+    days_usage: "&cUsage: /eb tax days <1-7...> (1=Sunday, 7=Saturday)"
+    dates_usage: "&cUsage: /eb tax dates <1-31...>"
+    inactive_usage: "&cUsage: /eb tax inactive <days>"
+    clear_usage: "&cUsage: /eb tax clear <days>"
+    bracket_usage: "&cUsage: /eb tax bracket <add|remove|list|clear>"
+    bracket_add_usage: "&cUsage: /eb tax bracket add <threshold> <rate>"
+    bracket_add_example: "&7Example: /eb tax bracket add 100000 0.01"
+    bracket_remove_usage: "&cUsage: /eb tax bracket remove <threshold>"
+    mode_usage: "&cUsage: /eb tax mode <absolute|percentile>"
+    account_usage: "&cUsage: /eb tax account <enable|disable|name>"
+    error_days_positive: "&cDays must be a positive number"
+    error_invalid_number: "&cInvalid number"
+    error_invalid_threshold_or_rate: "&cInvalid threshold or rate."
+    error_invalid_number_format: "&cInvalid number format"
+    error_invalid_threshold_format: "&cInvalid threshold format"
+    error_invalid_mode: "&cInvalid mode."
+    error_save_failed: "&cFailed to save configuration: %error%"
+
+  # migration
+  migration:
+    backup_created: "&7Created backup: %filename%"
+    config_upgraded: "&aConfig upgraded from v%old% to v%new%"
+    lang_upgraded: "&aLanguage file upgraded from v%old% to v%new%"
+    new_options_added: "&7New options added to config. Check config.yml for details."
+    command_usage: "&cUsage: /eb migrate <check|run|backup>"
+    status_check: "&eMigration Status Check:"
+    status_config_line: "&7Config: %status%"
+    status_lang_line: "&7Language (%lang%): %status%"
+    hint_run: "&eUse '/eb migrate run' to perform migration."
+    run_starting: "&7Starting migration..."
+    run_config_migrated: "&aConfiguration migrated successfully."
+    run_config_reloaded: "&7Plugin configuration reloaded."
+    run_config_not_needed: "&7Configuration did not need migration."
+    run_lang_migrated: "&aLanguage file (%lang%) migrated successfully."
+    run_lang_not_needed: "&7Language file did not need migration."
+    backup_starting: "&7Creating backups..."
+    backup_done: "&aBackups created in plugin folder."
+    backup_lang_missing: "&eConfig backed up. Language file not found."
+  gui:
+    main_menu_title: "&6EcoBalancer Menu"
+    dashboard_title: "&6Economic Dashboard"
+    tax_policies_title: "&6Tax Policies"
+    policy_title_prefix: "&6Policy: "
+    no_permission_tax_policies: "&cYou do not have permission to access Tax Policies."
+    executing_active_policy: "&eExecuting active policy: &6%name%"
+    no_active_policy: "&cNo active policy to execute!"
+    policies_reloaded: "&aPolicies reloaded."
+    executing_policy: "&eExecuting policy: &6%name%"

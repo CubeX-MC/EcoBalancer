@@ -1,7 +1,7 @@
 name: EcoBalancer
-version: '1.1.1'
+version: '1.2.1'
 main: org.cubexmc.ecobalancer.EcoBalancer
-api-version: '1.13'
+api-version: '1.16'
 description: This plugin deducts money from inactive players' accounts using Vault.
 author: angushushu
 website: angushushu.com
@@ -41,6 +41,8 @@ permissions:
       ecobalancer.command.health: true
       ecobalancer.command.impact: true
       ecobalancer.command.trends: true
+      ecobalancer.command.tax: true
+      ecobalancer.command.migrate: true
   ecobalancer.command.checkall:
     description: Allows use of /ecobal checkall command
     default: op
@@ -86,6 +88,18 @@ permissions:
   ecobalancer.command.trends:
     description: Allows use of /ecobal trends command
     default: op
+  ecobalancer.command.tax:
+    description: Allows use of /ecobal tax command
+    default: op
+  ecobalancer.command.migrate:
+    description: Allows use of /ecobal migrate to manage config versions
+    default: op
+  ecobalancer.gui.admin:
+    description: Access to EcoBalancer GUI Tax Management
+    default: op
+  ecobalancer.gui.view:
+    description: Access to EcoBalancer GUI Dashboard
+    default: true
   ecobalancer.*:
     description: Grants all EcoBalancer permissions
     default: op

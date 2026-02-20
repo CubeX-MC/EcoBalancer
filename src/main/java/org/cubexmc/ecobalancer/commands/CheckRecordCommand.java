@@ -7,6 +7,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.util.StringUtil;
 import org.cubexmc.ecobalancer.EcoBalancer;
+import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
 import java.sql.*;
 import java.util.*;
@@ -70,131 +71,153 @@ public class CheckRecordCommand implements TabExecutor {
             }
         }
 
-    // 从数据库中查询对应的操作
-    try (Connection connection = DatabaseUtils.getConnection(plugin)) {
+        final int finalOperationId = operationId;
+        final int finalPage = page;
+        final String finalSortBy = sortBy;
+        SchedulerUtils.runTaskAsync(plugin, () -> loadAndSendRecord(sender, finalOperationId, finalSortBy, finalPage));
+
+        return true;
+    }
+
+    private static class RecordDetail {
+        String playerName;
+        double oldBalance;
+        double newBalance;
+        double deduction;
+    }
+
+    private void loadAndSendRecord(CommandSender sender, int operationId, String sortBy, int page) {
+        final int pageSize = 10;
+        try (Connection connection = DatabaseUtils.getConnection(plugin)) {
             try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM operations WHERE id = ?")) {
                 preparedStatement.setInt(1, operationId);
                 try (ResultSet resultSet = preparedStatement.executeQuery()) {
-                    if (resultSet.next()) {
-                        boolean isCheckAll = resultSet.getBoolean("is_checkall");
-                        // read timestamp if needed: long timestamp = resultSet.getLong("timestamp");
+                    if (!resultSet.next()) {
+                        SchedulerUtils.runTask(plugin,
+                                () -> sender.sendMessage(plugin.getFormattedMessage("messages.record_invalid_id", null)));
+                        return;
+                    }
 
-                        if (isCheckAll) {
-                            Map<String, String> placeholders = new HashMap<>();
-                            placeholders.put("operation_id", String.valueOf(operationId));
-                            sender.sendMessage(plugin.getFormattedMessage("messages.record_all_header", placeholders));
-
-                            int pageSize = 10;
-                            int offset = (page - 1) * pageSize;
-
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? ORDER BY " + (sortBy.equals("alphabet") ? "player_name" : "deduction DESC") + " LIMIT ? OFFSET ?")) {
-                                selectStatement.setInt(1, operationId);
-                                selectStatement.setInt(2, pageSize);
-                                selectStatement.setInt(3, offset);
-
-                                try (ResultSet allRecords = selectStatement.executeQuery()) {
-                                    // rows will be iterated and printed; no need to count separately
-                                    while (allRecords.next()) {
-                                        String playerName = allRecords.getString("player_name");
-                                        double oldBalance = allRecords.getDouble("old_balance");
-                                        double newBalance = allRecords.getDouble("new_balance");
-                                        double deduction = allRecords.getDouble("deduction");
-
-                                        Map<String, String> detailPlaceholders = new HashMap<>();
-                                        detailPlaceholders.put("player", playerName);
-                                        detailPlaceholders.put("old_balance", String.format("%.2f", oldBalance));
-                                        detailPlaceholders.put("new_balance", String.format("%.2f", newBalance));
-                                        detailPlaceholders.put("deduction", String.format("%.2f", deduction));
-
-                                        String message = plugin.getFormattedMessage("messages.record_all_detail", detailPlaceholders);
-                                        sender.sendMessage(message);
-                                    }
-                                }
-                            }
-
-                            try (PreparedStatement countStatement = connection.prepareStatement("SELECT COUNT(*) AS total FROM records WHERE operation_id = ?")) {
-                                countStatement.setInt(1, operationId);
-                                try (ResultSet countResult = countStatement.executeQuery()) {
-                                    if (countResult.next()) {
-                                        int total = countResult.getInt("total");
-                                        int totalPages = (int) Math.ceil((double) total / pageSize);
-                                        Map<String, String> pagePlaceholders = new HashMap<>();
-                                        pagePlaceholders.put("page", String.valueOf(page));
-                                        pagePlaceholders.put("total", String.valueOf(totalPages));
-                                        // Build clickable prev/next and preserve sort param
-                                        String baseCmdPrefix;
-                                        if ("alphabet".equalsIgnoreCase(sortBy) || "deduction".equalsIgnoreCase(sortBy)) {
-                                            baseCmdPrefix = "/ecobal checkrecord " + operationId + " " + sortBy + " ";
-                                        } else {
-                                            baseCmdPrefix = "/ecobal checkrecord " + operationId + " ";
-                                        }
-
-                                        TextComponent prevPageComp = new TextComponent();
-                                        TextComponent nextPageComp = new TextComponent();
-
-                                        if (page > 1) {
-                                            prevPageComp.setText(plugin.getFormattedMessage("messages.prev_page", null));
-                                            prevPageComp.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, baseCmdPrefix + (page - 1)));
-                                        } else {
-                                            prevPageComp.setText(plugin.getFormattedMessage("messages.no_prev_page", null));
-                                        }
-                                        if (page < totalPages) {
-                                            nextPageComp.setText(plugin.getFormattedMessage("messages.next_page", null));
-                                            nextPageComp.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, baseCmdPrefix + (page + 1)));
-                                        } else {
-                                            nextPageComp.setText(plugin.getFormattedMessage("messages.no_next_page", null));
-                                        }
-
-                                        TextComponent message = plugin.getFormattedMessage(
-                                                "messages.record_page",
-                                                pagePlaceholders,
-                                                new String[]{"prev", "next"},
-                                                new TextComponent[]{prevPageComp, nextPageComp}
-                                        );
-                                        sender.spigot().sendMessage(message);
-
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_footer", null));
-                                    }
-                                }
-                            }
-                        } else {
-                            // 查询单个玩家的记录
-                            try (PreparedStatement selectStatement = connection.prepareStatement("SELECT * FROM records WHERE operation_id = ? AND deduction != 0.0")) {
-                                selectStatement.setInt(1, operationId);
-                                try (ResultSet allRecords = selectStatement.executeQuery()) {
-                                    if (allRecords.next()) {
-                                        String playerName = allRecords.getString("player_name");
-                                        double oldBalance = allRecords.getDouble("old_balance");
-                                        double newBalance = allRecords.getDouble("new_balance");
-                                        double deduction = allRecords.getDouble("deduction");
-
-                                        Map<String, String> placeholders = new HashMap<>();
-                                        placeholders.put("operation_id", String.valueOf(operationId));
-                                        placeholders.put("player", playerName);
-                                        placeholders.put("old_balance", String.format("%.2f", oldBalance));
-                                        placeholders.put("new_balance", String.format("%.2f", newBalance));
-                                        placeholders.put("deduction", String.format("%.2f", deduction));
-
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_player_header", placeholders));
-                                        String message = plugin.getFormattedMessage("messages.record_player_detail", placeholders);
-                                        sender.sendMessage(message);
-                                    } else {
-                                        sender.sendMessage(plugin.getFormattedMessage("messages.record_not_found", null));
-                                    }
+                    boolean isCheckAll = resultSet.getBoolean("is_checkall");
+                    if (isCheckAll) {
+                        int offset = Math.max(0, (page - 1) * pageSize);
+                        List<RecordDetail> details = new ArrayList<>();
+                        String orderBySql = sortBy.equals("alphabet") ? "player_name" : "deduction DESC";
+                        try (PreparedStatement selectStatement = connection.prepareStatement(
+                                "SELECT * FROM records WHERE operation_id = ? ORDER BY " + orderBySql + " LIMIT ? OFFSET ?")) {
+                            selectStatement.setInt(1, operationId);
+                            selectStatement.setInt(2, pageSize);
+                            selectStatement.setInt(3, offset);
+                            try (ResultSet allRecords = selectStatement.executeQuery()) {
+                                while (allRecords.next()) {
+                                    RecordDetail detail = new RecordDetail();
+                                    detail.playerName = allRecords.getString("player_name");
+                                    detail.oldBalance = allRecords.getDouble("old_balance");
+                                    detail.newBalance = allRecords.getDouble("new_balance");
+                                    detail.deduction = allRecords.getDouble("deduction");
+                                    details.add(detail);
                                 }
                             }
                         }
+
+                        int total = 0;
+                        try (PreparedStatement countStatement = connection
+                                .prepareStatement("SELECT COUNT(*) AS total FROM records WHERE operation_id = ?")) {
+                            countStatement.setInt(1, operationId);
+                            try (ResultSet countResult = countStatement.executeQuery()) {
+                                if (countResult.next()) {
+                                    total = countResult.getInt("total");
+                                }
+                            }
+                        }
+                        int totalPages = Math.max(1, (int) Math.ceil((double) total / pageSize));
+                        SchedulerUtils.runTask(plugin, () -> renderCheckAllRecord(sender, operationId, sortBy, page, totalPages, details));
                     } else {
-                        sender.sendMessage(plugin.getFormattedMessage("messages.record_invalid_id", null));
+                        RecordDetail detail = null;
+                        try (PreparedStatement selectStatement = connection.prepareStatement(
+                                "SELECT * FROM records WHERE operation_id = ? AND deduction != 0.0")) {
+                            selectStatement.setInt(1, operationId);
+                            try (ResultSet allRecords = selectStatement.executeQuery()) {
+                                if (allRecords.next()) {
+                                    detail = new RecordDetail();
+                                    detail.playerName = allRecords.getString("player_name");
+                                    detail.oldBalance = allRecords.getDouble("old_balance");
+                                    detail.newBalance = allRecords.getDouble("new_balance");
+                                    detail.deduction = allRecords.getDouble("deduction");
+                                }
+                            }
+                        }
+                        RecordDetail finalDetail = detail;
+                        SchedulerUtils.runTask(plugin, () -> renderSinglePlayerRecord(sender, operationId, finalDetail));
                     }
                 }
             }
         } catch (SQLException e) {
             Map<String, String> errorPlaceholders = new HashMap<>();
-            sender.sendMessage(plugin.getFormattedMessage("messages.record_error", errorPlaceholders));
+            errorPlaceholders.put("error", e.getMessage() == null ? "unknown" : e.getMessage());
+            SchedulerUtils.runTask(plugin,
+                    () -> sender.sendMessage(plugin.getFormattedMessage("messages.record_error", errorPlaceholders)));
+        }
+    }
+
+    private void renderCheckAllRecord(CommandSender sender, int operationId, String sortBy, int page, int totalPages,
+            List<RecordDetail> details) {
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("operation_id", String.valueOf(operationId));
+        sender.sendMessage(plugin.getFormattedMessage("messages.record_all_header", placeholders));
+
+        for (RecordDetail detail : details) {
+            Map<String, String> detailPlaceholders = new HashMap<>();
+            detailPlaceholders.put("player", detail.playerName);
+            detailPlaceholders.put("old_balance", String.format("%.2f", detail.oldBalance));
+            detailPlaceholders.put("new_balance", String.format("%.2f", detail.newBalance));
+            detailPlaceholders.put("deduction", String.format("%.2f", detail.deduction));
+            sender.sendMessage(plugin.getFormattedMessage("messages.record_all_detail", detailPlaceholders));
         }
 
-        return true;
+        Map<String, String> pagePlaceholders = new HashMap<>();
+        pagePlaceholders.put("page", String.valueOf(page));
+        pagePlaceholders.put("total", String.valueOf(totalPages));
+        String baseCmdPrefix = "/ecobal checkrecord " + operationId + " " + sortBy + " ";
+
+        TextComponent prevPageComp = new TextComponent();
+        TextComponent nextPageComp = new TextComponent();
+        if (page > 1) {
+            prevPageComp.setText(plugin.getFormattedMessage("messages.prev_page", null));
+            prevPageComp.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, baseCmdPrefix + (page - 1)));
+        } else {
+            prevPageComp.setText(plugin.getFormattedMessage("messages.no_prev_page", null));
+        }
+        if (page < totalPages) {
+            nextPageComp.setText(plugin.getFormattedMessage("messages.next_page", null));
+            nextPageComp.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, baseCmdPrefix + (page + 1)));
+        } else {
+            nextPageComp.setText(plugin.getFormattedMessage("messages.no_next_page", null));
+        }
+
+        TextComponent pageMessage = plugin.getFormattedMessage(
+                "messages.record_page",
+                pagePlaceholders,
+                new String[] { "prev", "next" },
+                new TextComponent[] { prevPageComp, nextPageComp });
+        sender.spigot().sendMessage(pageMessage);
+        sender.sendMessage(plugin.getFormattedMessage("messages.record_footer", null));
+    }
+
+    private void renderSinglePlayerRecord(CommandSender sender, int operationId, RecordDetail detail) {
+        if (detail == null) {
+            sender.sendMessage(plugin.getFormattedMessage("messages.record_not_found", null));
+            return;
+        }
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("operation_id", String.valueOf(operationId));
+        placeholders.put("player", detail.playerName);
+        placeholders.put("old_balance", String.format("%.2f", detail.oldBalance));
+        placeholders.put("new_balance", String.format("%.2f", detail.newBalance));
+        placeholders.put("deduction", String.format("%.2f", detail.deduction));
+
+        sender.sendMessage(plugin.getFormattedMessage("messages.record_player_header", placeholders));
+        sender.sendMessage(plugin.getFormattedMessage("messages.record_player_detail", placeholders));
     }
 
     @Override

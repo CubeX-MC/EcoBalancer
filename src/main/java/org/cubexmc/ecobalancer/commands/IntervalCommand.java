@@ -55,7 +55,7 @@ public class IntervalCommand implements TabExecutor {
         if (sortBy.equals("balance")) {
             matchedPlayers.sort((p1, p2) -> Double.compare(VaultUtils.getBalance(p2), VaultUtils.getBalance(p1)));
         } else {
-            matchedPlayers.sort(Comparator.comparing(OfflinePlayer::getName));
+            matchedPlayers.sort(Comparator.comparing((OfflinePlayer p) -> Optional.ofNullable(p.getName()).orElse(""), String.CASE_INSENSITIVE_ORDER));
         }
 
         // 处理分页显示
@@ -95,7 +95,7 @@ public class IntervalCommand implements TabExecutor {
                 long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
 
                 Map<String, String> placeholders = new HashMap<>();
-                placeholders.put("player", player.getName());
+                placeholders.put("player", player.getName() != null ? player.getName() : "Unknown");
                 placeholders.put("balance", String.format("%.2f", balance));
                 placeholders.put("days_offline", String.valueOf(daysOffline));
 

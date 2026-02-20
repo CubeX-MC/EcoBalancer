@@ -1,6 +1,6 @@
 # EcoBalancer: A Smart Minecraft Economy Plugin
 
-English | [简体中文](README_zh.md)
+English | [简体中文](README.md)
 
 EcoBalancer is a smart Minecraft economy plugin that optimizes your server's economy through an intelligent tax system for inactive players. It promotes fair competition, creates an active gaming environment, and provides smart management solutions for your server's economy.
 
@@ -34,16 +34,23 @@ All commands require the `/ecobal` prefix (or alias `/eb`):
 ### Basic Commands
 - `/ecobal help`: Display help information
 - `/ecobal reload`: Reload the configuration file
-- `/ecobal checkall`: Update all offline players' balances as per configuration settings
+- `/ecobal checkall [filters...]`: Update target players' balances as per configuration settings
 - `/ecobal checkplayer <player>`: Update a specific offline player's balance as per configuration settings
 - `/ecobal stats [bars] [low] [up]`: Show descriptive statistics and wealth distribution histogram
 - `/ecobal interval <low> <up> [page]`: List players' balance in a specific interval
 - `/ecobal perc <balance> [low] [up]`: Show percentile of a specific balance among players
+- `/ecobal gui`: Open GUI dashboard/policy menu
+- `/ecobal migrate <check|run|backup>`: Check/run migration and create backups
+- `/ecobal tax ...`: Manage tax config and policy execution
+- `/ecobal policy <list|set|execute>`: Alias routed to tax policy management
 
 ### Economic Analysis Commands
 - `/ecobal gini [days]`: Calculate Gini Coefficient (measure wealth inequality), optional parameter to filter players active within N days
 - `/ecobal concentration [percentages...]`: Wealth concentration analysis, show percentage of wealth held by Top N% players (default: 1%, 5%, 10%, 20%)
 - `/ecobal report [operation_id]`: View tax operation report, showing total tax collected, players affected, tax bracket distribution, etc.
+- `/ecobal health [filters...]`: Economy health score report
+- `/ecobal impact [operation_id]`: Tax impact report for one operation
+- `/ecobal trends [days]`: Time-series trend report based on snapshots
 
 ### Record Management Commands
 - `/ecobal checkrecords [page]`: Show all operation records
@@ -51,6 +58,17 @@ All commands require the `/ecobal` prefix (or alias `/eb`):
 - `/ecobal restore <operation_id>`: Restore a specific operation
 
 **Alias**: You can use `/eb` instead of `/ecobal`, e.g., `/eb gini` is equivalent to `/ecobal gini`
+
+## Permissions
+
+Core:
+
+- `ecobalancer.command.ecobal`: Main command root
+- `ecobalancer.command.*`: Per-subcommand permissions (`checkall`, `checkplayer`, `stats`, `interval`, `perc`, `checkrecords`, `checkrecord`, `restore`, `gini`, `concentration`, `report`, `health`, `impact`, `trends`, `tax`, `migrate`, `reload`)
+- `ecobalancer.gui.view`: Open GUI dashboard
+- `ecobalancer.gui.admin`: Manage policies in GUI / execute policy
+- `ecobalancer.admin`: Admin notifications and migration operations
+- `ecobalancer.exempt`: Tax exemption node (if enabled by config)
 
 ## Configuration (config.yml)
 
@@ -77,6 +95,30 @@ tax-brackets:
    rate: 0.02 # Tax rate
 tax-account: true # Whether to use tax account
 tax-account-name: 'tax' # Tax account name
+file-logging: true # Write plugin logs under plugins/EcoBalancer/logs/latest.log
+require-confirmation: true # Require confirmation for destructive actions
+tax-exempt-permission: 'ecobalancer.exempt'
+max-deduction-per-player: 0 # 0 = unlimited
+min-balance-protection: 0 # 0 = disabled
+
+## Migration
+
+- `/eb migrate check`: Show config/lang version status
+- `/eb migrate run`: Apply migration then reload config
+- `/eb migrate backup`: Create manual backup files
+
+## Troubleshooting
+
+- Vault not found / plugin disabled: verify Vault and an economy provider are installed.
+- Commands lag on large datasets: prefer off-peak runs and tune filters (`tax-filters`).
+- Missing language strings: run `/eb migrate run` to merge latest language keys.
+- No trends data: snapshots are generated periodically; wait until at least one snapshot is created.
+
+## Dependency Upgrade Strategy
+
+- Keep dependency versions pinned in `pom.xml` properties.
+- Review updates regularly (especially `sqlite-jdbc`) and run full command/regression checks after upgrades.
+- Prefer upgrading one dependency set at a time (build plugins first, then runtime deps) for easier rollback.
 
 [![Forkers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/forks/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/network/members)
 [![Stargazers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/stars/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/stargazers)

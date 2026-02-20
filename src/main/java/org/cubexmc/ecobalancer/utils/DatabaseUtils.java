@@ -23,7 +23,8 @@ public class DatabaseUtils {
             s.execute("PRAGMA cache_size=-8192");
             // Wait up to 10s for locked database to become available
             s.execute("PRAGMA busy_timeout=10000");
-        } catch (SQLException ignored) {
+        } catch (SQLException e) {
+            // Pragmas are best-effort; keep connection usable.
         }
     }
     private static File getDatabaseFile(Plugin plugin) {
@@ -153,7 +154,12 @@ public class DatabaseUtils {
                 last = e;
                 String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase(java.util.Locale.ROOT);
                 if (msg.contains("database is locked") || msg.contains("sqlite_busy")) {
-                    try { Thread.sleep(sleepMs); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+                    try {
+                        Thread.sleep(sleepMs);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        logger.warning("SQL retry sleep interrupted: " + ie.getMessage());
+                    }
                     sleepMs = Math.min(1000L, sleepMs * 2);
                     continue;
                 }

@@ -36,6 +36,10 @@ EcoBalancer 目前正在测试中。我们建议在部署前进行严格评估�
 - `/ecobal reload`：重新加载配置文件
 - `/ecobal checkall [filters...]`：根据配置与过滤参数更新玩家余额
 - `/ecobal checkplayer <player>`：根据配置设置更新指定离线玩家的余额
+- `/ecobal gui`：打开 GUI 仪表盘/策略菜单
+- `/ecobal migrate <check|run|backup>`：检查/执行迁移并创建备份
+- `/ecobal tax ...`：管理税收配置与策略执行
+- `/ecobal policy <list|set|execute>`：转发到 tax 策略管理
 
 ### 经济分析命令
 - `/ecobal gini [filters...]`：计算基尼系数（衡量贫富差距）。支持可选过滤参数（见下文“过滤参数”）。
@@ -45,6 +49,8 @@ EcoBalancer 目前正在测试中。我们建议在部署前进行严格评估�
 - `/ecobal perc <balance> [filters...]`：在给定过滤条件集合下，显示指定余额所处的百分位数。
 - `/ecobal report [operation_id]`：查看税收操作报告，显示征税总额、影响人数、税阶分布等
 - `/ecobal health [filters...]`：通过多项指标检查服务器经济健康状况，支持过滤参数。
+- `/ecobal impact [operation_id]`：查看某次操作的税收影响分析
+- `/ecobal trends [days]`：查看经济趋势（基于快照历史）
 
 ### 记录管理命令
 - `/ecobal checkrecords [page]`：显示所有操作记录
@@ -52,6 +58,17 @@ EcoBalancer 目前正在测试中。我们建议在部署前进行严格评估�
 - `/ecobal restore <operation_id>`：恢复特定操作
 
 **别名**：可以使用 `/eb` 代替 `/ecobal`，例如 `/eb gini` 等同于 `/ecobal gini`
+
+## 权限节点
+
+核心权限：
+
+- `ecobalancer.command.ecobal`：主命令入口
+- `ecobalancer.command.*`：细粒度子命令权限（`checkall`、`checkplayer`、`stats`、`interval`、`perc`、`checkrecords`、`checkrecord`、`restore`、`gini`、`concentration`、`report`、`health`、`impact`、`trends`、`tax`、`migrate`、`reload`）
+- `ecobalancer.gui.view`：打开 GUI 仪表盘
+- `ecobalancer.gui.admin`：GUI 策略管理与立即执行
+- `ecobalancer.admin`：管理员通知与迁移相关操作
+- `ecobalancer.exempt`：免税权限（由配置控制）
 
 ### 过滤参数（适用于 gini / concentration / health / stats / interval / perc / checkall 等分析类命令）
 
@@ -113,7 +130,31 @@ only-offline-players: true
 stats-world: ''
 tax-filters: ''
 record-zero-deduction: false
+file-logging: true # 是否写入插件日志文件 plugins/EcoBalancer/logs/latest.log
+require-confirmation: true # 高风险操作是否需要确认
+tax-exempt-permission: 'ecobalancer.exempt'
+max-deduction-per-player: 0 # 单次最大扣款（0 = 不限制）
+min-balance-protection: 0 # 最低余额保护（0 = 关闭）
 ```
+
+## 迁移命令
+
+- `/eb migrate check`：检查 config/lang 版本状态
+- `/eb migrate run`：执行迁移并重载配置
+- `/eb migrate backup`：手动创建配置备份
+
+## 常见问题排查
+
+- Vault 缺失导致插件禁用：确认已安装 Vault 与一个经济实现插件。
+- 数据量大时命令卡顿：建议使用过滤参数，避开高峰时段执行。
+- 语言键缺失或文案异常：执行 `/eb migrate run` 合并最新语言键。
+- `trends` 无数据：等待快照定时任务生成至少一条历史记录。
+
+## 依赖升级策略
+
+- 在 `pom.xml` 中通过 properties 固定关键依赖版本。
+- 定期检查依赖更新（尤其是 `sqlite-jdbc`），升级后执行完整命令回归。
+- 建议分批升级（先构建插件版本，再运行时依赖），便于定位回归和回滚。
 
 [![Forkers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/forks/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/network/members)
 [![Stargazers repo roster for @CubeX-MC/EcoBalancer](https://reporoster.com/stars/CubeX-MC/EcoBalancer)](https://github.com/CubeX-MC/EcoBalancer/stargazers) 

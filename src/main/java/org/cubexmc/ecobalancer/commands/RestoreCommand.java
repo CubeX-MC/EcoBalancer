@@ -11,11 +11,15 @@ import java.sql.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import org.cubexmc.ecobalancer.utils.DatabaseUtils;
 import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
 public class RestoreCommand implements CommandExecutor {
     private final EcoBalancer plugin;
+    private static final ReentrantLock RESTORE_LOCK = new ReentrantLock();
 
     public RestoreCommand(EcoBalancer plugin) {
         this.plugin = plugin;
@@ -36,9 +40,12 @@ public class RestoreCommand implements CommandExecutor {
             return true;
         }
 
-    // 连接由 DatabaseUtils 统一管理
+        if (!RESTORE_LOCK.tryLock()) {
+            sender.sendMessage(plugin.getFormattedMessage("messages.processing", null));
+            return true;
+        }
 
-        // 异步读取数据库，主线程回放经济变更
+        // 异步读取数据库，主线程同步回放经济变更
         SchedulerUtils.runTaskAsync(plugin, () -> {
             try (Connection connection = DatabaseUtils.getConnection(plugin)) {
                 long targetTs = 0L;
@@ -67,6 +74,16 @@ public class RestoreCommand implements CommandExecutor {
                         int restoredOps = 0;
                         while (rsOps.next()) {
                             int opId = rsOps.getInt("id");
+                            // Claim this operation to avoid duplicate restore in edge races.
+                            try (PreparedStatement claim = connection.prepareStatement(
+                                    "UPDATE operations SET is_restored = 1 WHERE id = ? AND is_restored = 0")) {
+                                claim.setInt(1, opId);
+                                int updated = claim.executeUpdate();
+                                if (updated == 0) {
+                                    continue;
+                                }
+                            }
+
                             // 收集需要回滚的条目
                             java.util.List<java.util.AbstractMap.SimpleEntry<UUID, Double>> entries = new java.util.ArrayList<>();
                             try (PreparedStatement psRec = connection.prepareStatement(
@@ -86,7 +103,7 @@ public class RestoreCommand implements CommandExecutor {
                             for (int i = 0; i < entries.size(); i += batch) {
                                 final int start = i;
                                 final int end = Math.min(i + batch, entries.size());
-                                SchedulerUtils.runTask(plugin, () -> {
+                                runOnMainThreadSync(() -> {
                                     for (int j = start; j < end; j++) {
                                         UUID uid = entries.get(j).getKey();
                                         double deduction = entries.get(j).getValue();
@@ -99,13 +116,6 @@ public class RestoreCommand implements CommandExecutor {
                                     }
                                 });
                             }
-
-                            // 标记该操作为已恢复
-                            try (PreparedStatement psUpd = connection.prepareStatement(
-                                    "UPDATE operations SET is_restored = 1 WHERE id = ?")) {
-                                psUpd.setInt(1, opId);
-                                psUpd.executeUpdate();
-                            }
                             restoredOps++;
                         }
 
@@ -117,10 +127,31 @@ public class RestoreCommand implements CommandExecutor {
                     }
                 }
             } catch (SQLException e) {
-                SchedulerUtils.runTask(plugin, () -> sender.sendMessage(plugin.getFormattedMessage("messages.restore_error", new HashMap<>())));
+                Map<String, String> errorPlaceholders = new HashMap<>();
+                errorPlaceholders.put("error", e.getMessage() == null ? "unknown" : e.getMessage());
+                SchedulerUtils.runTask(plugin,
+                        () -> sender.sendMessage(plugin.getFormattedMessage("messages.restore_error", errorPlaceholders)));
+            } finally {
+                RESTORE_LOCK.unlock();
             }
         });
 
         return true;
+    }
+
+    private void runOnMainThreadSync(Runnable task) {
+        CountDownLatch latch = new CountDownLatch(1);
+        SchedulerUtils.runTask(plugin, () -> {
+            try {
+                task.run();
+            } finally {
+                latch.countDown();
+            }
+        });
+        try {
+            latch.await(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

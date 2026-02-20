@@ -107,7 +107,9 @@ public final class AnalysisFilters {
                 double bal = VaultUtils.getBalance(p);
                 if (bal < 0) continue;
                 candidates.add(new PlayerEntry(p, bal));
-            } catch (Throwable ignored) {}
+            } catch (Throwable t) {
+                Bukkit.getLogger().fine("[EcoBalancer] Failed to process filtered balance candidate: " + t.getMessage());
+            }
         }
 
         // Compute percentile bounds if needed
@@ -163,7 +165,9 @@ public final class AnalysisFilters {
                 if (bal < 0) continue;
                 candidates.add(p);
                 candidateBalances.add(bal);
-            } catch (Throwable ignored) {}
+            } catch (Throwable t) {
+                Bukkit.getLogger().fine("[EcoBalancer] Failed to process filtered player candidate: " + t.getMessage());
+            }
         }
 
         double minBound = (criteria.minBalance != null) ? criteria.minBalance : Double.NEGATIVE_INFINITY;

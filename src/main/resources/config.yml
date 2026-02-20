@@ -1,3 +1,4 @@
+config-version: 3
 language: 'en_US' # 语言 # Language en_US, zh_CN
 info-on-login: true # 登录时显示用户信息 # Show user info on login
 file-logging: true # 是否将日志写入插件日志文件（最新日志位于 plugins/EcoBalancer/logs/latest.log）# Whether to write messages to plugin log file
@@ -11,6 +12,9 @@ deduct-based-on-time: true
 # 下面两个选项仅在 deduct-based-on-time 为 true 时生效 # The following two options only take effect when deduct-based-on-time is true
 inactive-days-to-deduct: 50  # 未上线扣款开始的天数 # Days inactive before starting deductions
 inactive-days-to-clear: 500 # 未上线清空余额的天数 # Days inactive before clearing balance
+max-deduction-per-player: 0 # 单次最大扣款额 (0为不限制) # Max deduction per player per cycle (0 for unlimited)
+min-balance-protection: 0 # 余额保护阈值，低于此值不征税 (0为不保护) # Minimum balance protection threshold
+tax-exempt-permission: 'ecobalancer.exempt' # 免税权限节点 # Permission node for tax exemption
 # 按阶级扣税 # Tax brackets for deductions
 # 阈值解释方式：
 # - 当 percentile-thresholds 为 false 时，threshold 使用“绝对余额”数值（默认行为）
@@ -28,4 +32,5 @@ tax-account-name: 'tax' # 税金账户名称 # Tax account name
 only-offline-players: true # 只针对离线玩家收税（在线玩家跳过）# Only deduct from offline players
 stats-world: '' # 读取 vanilla 统计(stats/)的世界名，留空则取第一个世界 # World name for stats dir, empty uses first world
 tax-filters: '' # 默认征税过滤器（与分析命令相同的 key:value 语法）# Default tax filters
+require-confirmation: true # 执行毁灭性命令时是否需要确认 # Require confirmation for destructive commands
 record-zero-deduction: false # 是否记录扣款为0的记录 # Record zero-deduction entries
