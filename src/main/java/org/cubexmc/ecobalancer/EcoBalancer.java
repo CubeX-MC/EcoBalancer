@@ -2,6 +2,7 @@ package org.cubexmc.ecobalancer;
 
 import net.md_5.bungee.api.chat.*;
 import net.milkbowl.vault.economy.Economy;
+import net.milkbowl.vault.permission.Permission;
 
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -36,10 +37,18 @@ import org.cubexmc.ecobalancer.utils.EconomicMetrics;
 import org.cubexmc.ecobalancer.utils.PlaytimeUtils;
 import org.cubexmc.ecobalancer.utils.ConfigMigrator;
 import org.cubexmc.ecobalancer.utils.AnalysisFilters;
+import org.cubexmc.ecobalancer.tax.DebtMode;
+import org.cubexmc.ecobalancer.tax.TaxContext;
+import org.cubexmc.ecobalancer.tax.TaxDecision;
+import org.cubexmc.ecobalancer.tax.TaxDecisionResult;
+import org.cubexmc.ecobalancer.tax.TaxLedgerService;
+import org.cubexmc.ecobalancer.tax.TaxOperationType;
+import org.cubexmc.ecobalancer.tax.TaxRunService;
 
 @SuppressWarnings("deprecation")
 public final class EcoBalancer extends JavaPlugin {
     private static Economy econ = null;
+    private static Permission perms = null;
     private FileHandler fileHandler;
     private Logger fileLogger = Logger.getLogger("EcoBalancerFileLogger");
     private int recordRetentionDays;
@@ -49,9 +58,24 @@ public final class EcoBalancer extends JavaPlugin {
     private String messagePrefix;
     private org.cubexmc.ecobalancer.gui.GuiManager guiManager;
     private org.cubexmc.ecobalancer.policies.PolicyManager policyManager;
+    private TaxRunService taxRunService;
+    private TaxLedgerService taxLedgerService;
+    private long nextScheduledRunMillis;
 
     public org.cubexmc.ecobalancer.policies.PolicyManager getPolicyManager() {
         return policyManager;
+    }
+
+    public TaxRunService getTaxRunService() {
+        return taxRunService;
+    }
+
+    public TaxLedgerService getTaxLedgerService() {
+        return taxLedgerService;
+    }
+
+    public long getNextScheduledRunMillis() {
+        return nextScheduledRunMillis;
     }
 
     private void initFileLogger(boolean rotateExisting) {
@@ -120,6 +144,9 @@ public final class EcoBalancer extends JavaPlugin {
 
         // Initialize GUI Manager
         guiManager = new org.cubexmc.ecobalancer.gui.GuiManager(this);
+        taxRunService = new TaxRunService();
+        taxLedgerService = new TaxLedgerService(this);
+        setupPermissions();
 
         // Initialize VaultUtils for modules that reference Vault via utility class
         try {
@@ -184,6 +211,14 @@ public final class EcoBalancer extends JavaPlugin {
         }
 
         getServer().getPluginManager().registerEvents(new AdminLoginListener(this), this);
+        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            try {
+                new org.cubexmc.ecobalancer.integrations.EcoBalancerPlaceholderExpansion(this).register();
+                getLogger().info("PlaceholderAPI expansion registered.");
+            } catch (Throwable t) {
+                getLogger().log(Level.WARNING, "Failed to register PlaceholderAPI expansion", t);
+            }
+        }
         // Register executor and decoupled tab completer
         UtilCommand util = new UtilCommand(this);
         if (getCommand("ecobal") != null) {
@@ -375,6 +410,23 @@ public final class EcoBalancer extends JavaPlugin {
         return econ != null;
     }
 
+    private boolean setupPermissions() {
+        try {
+            RegisteredServiceProvider<Permission> rsp = getServer().getServicesManager().getRegistration(Permission.class);
+            if (rsp == null) {
+                perms = null;
+                getLogger().info("Vault permissions provider not found; offline tax exemptions will use online/op checks only.");
+                return false;
+            }
+            perms = rsp.getProvider();
+            return perms != null;
+        } catch (Throwable t) {
+            perms = null;
+            getLogger().log(Level.WARNING, "Failed to initialize Vault permissions provider", t);
+            return false;
+        }
+    }
+
     public static Economy getEconomy() {
         return econ;
     }
@@ -397,11 +449,15 @@ public final class EcoBalancer extends JavaPlugin {
      */
     public void checkBalance(CommandSender sender, long currentTime, OfflinePlayer player, boolean log,
             boolean isCheckAll, int operationId, org.cubexmc.ecobalancer.policies.TaxPolicy specifiedPolicy) {
+        checkBalance(sender, currentTime, player, log, isCheckAll, operationId, specifiedPolicy, null);
+    }
+
+    public void checkBalance(CommandSender sender, long currentTime, OfflinePlayer player, boolean log,
+            boolean isCheckAll, int operationId, org.cubexmc.ecobalancer.policies.TaxPolicy specifiedPolicy,
+            TaxContext suppliedContext) {
         long lastPlayed = player.getLastPlayed();
         long daysOffline = (currentTime - lastPlayed) / (1000 * 60 * 60 * 24);
         double balance = econ.hasAccount(player) ? econ.getBalance(player) : 0;
-
-        double oldBalance = balance;
 
         if (taxAccount && taxAccountName != null && taxAccountName.equals(player.getName()))
             return;
@@ -411,73 +467,20 @@ public final class EcoBalancer extends JavaPlugin {
         if (policy == null)
             return;
 
-        // Exempt check
-
-        // Respect offline-only policy if enabled
-        if (policy.isOnlyOfflinePlayers() && player.isOnline()) {
-            return;
-        }
-
-        // Calculate tax using policy logic (handles min balance, max deduction,
-        // brackets, composition)
-        double calculatedTax = policy.calculateTax(balance, policyManager::getPolicy);
-
-        // If policy uses percentile mode, we might need reprocessing if brackets
-        // weren't dynamically updated?
-        // For this refactor, we assume TaxPolicy handles it strictly based on stored
-        // brackets.
-        // If percentile mode was active, PolicyManager/TaxPolicy likely need to update
-        // brackets periodically.
-        // For now we rely on static brackets in the policy.
-
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("player", player.getName() != null ? player.getName() : "Unknown");
         placeholders.put("balance", String.format("%.2f", balance));
         placeholders.put("days_offline", String.valueOf(daysOffline));
+        TaxOperationType operationType = isCheckAll ? TaxOperationType.CHECK_ALL : TaxOperationType.CHECK_PLAYER;
+        TaxContext context = suppliedContext != null ? suppliedContext
+                : new TaxContext(operationId, policy.getName(), operationType, currentTime, isCheckAll, null);
+        TaxDecision decision = calculateAndApplyDecision(sender, player, policy, context, daysOffline, placeholders,
+                log);
 
-        // Respect offline-only policy if enabled
-
-        // fix all negative balance
-        if (balance < 0.0) {
-            econ.depositPlayer(player, -1 * balance);
-            placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
-            sendMessage(sender, "messages.negative_balance", placeholders, log);
-        } else if (balance > 0.0) {
-            // Check inactive days logic
-            int daysToClear = policy.getInactiveDaysToClear();
-            int daysToDeduct = policy.getInactiveDaysToDeduct();
-
-            // Only apply time-based checks if configured > 0
-            boolean timeCheck = daysToClear > 0 || daysToDeduct > 0;
-
-            if (timeCheck) {
-                if (daysToClear > 0 && daysOffline > daysToClear) {
-                    // Clear account
-                    econ.withdrawPlayer(player, balance);
-                    if (taxAccount)
-                        econ.depositPlayer(taxAccountName, balance);
-                    placeholders.put("new_balance", String.format("%.2f", econ.getBalance(player)));
-                    sendMessage(sender, "messages.offline_extreme", placeholders, log);
-                } else if (daysToDeduct > 0 && daysOffline > daysToDeduct) {
-                    // Deduct tax
-                    applyDeduction(sender, player, calculatedTax, "messages.offline_moderate", placeholders, log);
-                } else {
-                    sendMessage(sender, "messages.offline_active", placeholders, false);
-                }
-            } else {
-                // No time limit, just apply tax
-                applyDeduction(sender, player, calculatedTax, "messages.deduction_made", placeholders, log);
-            }
-        } else {
-            sendMessage(sender, "messages.zero_balance", placeholders, log);
-        }
-
-        double newBalance = econ.getBalance(player);
-        double deduction = oldBalance - newBalance;
-        if (!getConfig().getBoolean("record-zero-deduction", true) && Math.abs(deduction) < 1e-9) {
+        if (decision == null) {
             return;
         }
-        saveRecord(player, oldBalance, newBalance, deduction, isCheckAll, operationId);
+        recordDecision(player, decision, isCheckAll, context);
     }
 
     private void sendMessage(CommandSender sender, String path, Map<String, String> placeholders, boolean isLog) {
@@ -489,6 +492,19 @@ public final class EcoBalancer extends JavaPlugin {
             for (String str : message.split("\n"))
                 fileLogger.info(str);
         }
+    }
+
+    private void sendTaxRunBusy(CommandSender sender) {
+        if (sender == null || taxRunService == null) {
+            return;
+        }
+        org.cubexmc.ecobalancer.tax.TaxRunState state = taxRunService.getState();
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("operation_id", String.valueOf(state.getOperationId()));
+        placeholders.put("policy", state.getPolicyName() == null ? "" : state.getPolicyName());
+        placeholders.put("processed", String.valueOf(state.getProcessedPlayers()));
+        placeholders.put("total", String.valueOf(state.getTotalPlayers()));
+        sender.sendMessage(getFormattedMessage("messages.tax.run_busy", placeholders));
     }
 
     private long calculateNextDelay() {
@@ -517,13 +533,195 @@ public final class EcoBalancer extends JavaPlugin {
         return calculateDelayForDaily(now, hourOfDay, minute);
     }
 
-    private void applyDeduction(CommandSender sender, OfflinePlayer player, double deduction, String msgKey,
+    private TaxDecision calculateAndApplyDecision(CommandSender sender, OfflinePlayer player,
+            org.cubexmc.ecobalancer.policies.TaxPolicy policy, TaxContext context, long daysOffline,
             Map<String, String> placeholders, boolean log) {
-        placeholders.put("deduction", String.format("%.2f", deduction));
-        econ.withdrawPlayer(player, deduction);
-        if (taxAccount)
-            econ.depositPlayer(taxAccountName, deduction);
-        sendMessage(sender, msgKey, placeholders, log);
+        double oldBalance = econ.hasAccount(player) ? econ.getBalance(player) : 0.0;
+        if (!econ.hasAccount(player)) {
+            return new TaxDecision(oldBalance, 0.0, 0.0, oldBalance, TaxDecisionResult.SKIPPED_NO_ACCOUNT,
+                    "no_vault_account");
+        }
+
+        if (isTaxExempt(player, policy, context.getOperationType())) {
+            return new TaxDecision(oldBalance, 0.0, 0.0, oldBalance, TaxDecisionResult.EXEMPT,
+                    "permission_exempt");
+        }
+
+        if (policy.isOnlyOfflinePlayers() && player.isOnline()) {
+            return new TaxDecision(oldBalance, 0.0, 0.0, oldBalance, TaxDecisionResult.SKIPPED_ONLINE,
+                    "policy_only_offline");
+        }
+
+        if (oldBalance < 0.0) {
+            econ.depositPlayer(player, -1 * oldBalance);
+            double newBalance = econ.getBalance(player);
+            placeholders.put("new_balance", String.format("%.2f", newBalance));
+            sendMessage(sender, "messages.negative_balance", placeholders, log);
+            return new TaxDecision(oldBalance, 0.0, oldBalance - newBalance, newBalance,
+                    TaxDecisionResult.NEGATIVE_BALANCE_FIXED, "negative_balance_fixed");
+        }
+
+        if (oldBalance <= 0.0) {
+            sendMessage(sender, "messages.zero_balance", placeholders, log);
+            return new TaxDecision(oldBalance, 0.0, 0.0, oldBalance, TaxDecisionResult.ZERO_DEDUCTION,
+                    "zero_balance");
+        }
+
+        int daysToClear = policy.getInactiveDaysToClear();
+        int daysToDeduct = policy.getInactiveDaysToDeduct();
+        boolean timeCheck = daysToClear > 0 || daysToDeduct > 0;
+
+        if (timeCheck && daysToClear > 0 && daysOffline > daysToClear) {
+            double actual = oldBalance;
+            econ.withdrawPlayer(player, actual);
+            if (taxAccount)
+                econ.depositPlayer(taxAccountName, actual);
+            double newBalance = econ.getBalance(player);
+            placeholders.put("new_balance", String.format("%.2f", newBalance));
+            sendMessage(sender, "messages.offline_extreme", placeholders, log);
+            return new TaxDecision(oldBalance, actual, actual, newBalance, TaxDecisionResult.CLEARED,
+                    "inactive_clear");
+        }
+
+        if (timeCheck && (daysToDeduct <= 0 || daysOffline <= daysToDeduct)) {
+            sendMessage(sender, "messages.offline_active", placeholders, false);
+            return new TaxDecision(oldBalance, 0.0, 0.0, oldBalance, TaxDecisionResult.SKIPPED_INACTIVE_DAYS,
+                    "inactive_days_not_reached");
+        }
+
+        double requestedDeduction = policy.calculateTax(oldBalance, policyManager::getPolicy);
+        TaxDecision decision = applyDeductionWithDebtMode(player, oldBalance, requestedDeduction, policy, context);
+        placeholders.put("deduction", String.format("%.2f", decision.getActualDeduction()));
+        if (decision.getResult() == TaxDecisionResult.INSUFFICIENT_BALANCE_SKIPPED) {
+            sendMessage(sender, "messages.tax.insufficient_balance_skipped", placeholders, log);
+        } else if (decision.getResult() == TaxDecisionResult.ZERO_DEDUCTION) {
+            sendMessage(sender, "messages.tax.zero_deduction", placeholders, log);
+        } else if (timeCheck) {
+            sendMessage(sender, "messages.offline_moderate", placeholders, log);
+        } else {
+            sendMessage(sender, "messages.deduction_made", placeholders, log);
+        }
+        runDebtCommandsIfNeeded(player, decision);
+        return decision;
+    }
+
+    private TaxDecision applyDeductionWithDebtMode(OfflinePlayer player, double oldBalance, double requestedDeduction,
+            org.cubexmc.ecobalancer.policies.TaxPolicy policy, TaxContext context) {
+        if (requestedDeduction <= 0.0) {
+            return new TaxDecision(oldBalance, requestedDeduction, 0.0, oldBalance, TaxDecisionResult.ZERO_DEDUCTION,
+                    "calculated_tax_zero");
+        }
+
+        DebtMode mode = resolveDebtMode(policy);
+        double actualDeduction = requestedDeduction;
+        TaxDecisionResult result = TaxDecisionResult.TAXED;
+        String reason = "taxed";
+
+        if (oldBalance < requestedDeduction) {
+            if (mode == DebtMode.SKIP) {
+                return new TaxDecision(oldBalance, requestedDeduction, 0.0, oldBalance,
+                        TaxDecisionResult.INSUFFICIENT_BALANCE_SKIPPED, "insufficient_balance_skip");
+            }
+            if (mode == DebtMode.DRAIN) {
+                actualDeduction = Math.max(0.0, oldBalance);
+                result = TaxDecisionResult.DRAINED_TO_ZERO;
+                reason = "insufficient_balance_drain";
+            } else {
+                result = TaxDecisionResult.TAXED;
+                reason = "insufficient_balance_allow_negative";
+            }
+        }
+
+        if (actualDeduction > 0) {
+            econ.withdrawPlayer(player, actualDeduction);
+            if (taxAccount)
+                econ.depositPlayer(taxAccountName, actualDeduction);
+        }
+        double newBalance = econ.getBalance(player);
+        if (context != null && taxLedgerService != null) {
+            TaxDecision ledgerDecision = new TaxDecision(oldBalance, requestedDeduction, actualDeduction, newBalance,
+                    result, reason);
+            SchedulerUtils.runTaskAsync(this, () -> taxLedgerService.recordTax(player, context, ledgerDecision));
+        }
+        return new TaxDecision(oldBalance, requestedDeduction, actualDeduction, newBalance, result, reason);
+    }
+
+    private DebtMode resolveDebtMode(org.cubexmc.ecobalancer.policies.TaxPolicy policy) {
+        DebtMode global = DebtMode.fromConfig(getConfig().getString("debt-mode", "skip"), DebtMode.SKIP);
+        DebtMode policyMode = DebtMode.fromConfig(policy.getDebtMode(), DebtMode.INHERIT);
+        return policyMode == DebtMode.INHERIT ? global : policyMode;
+    }
+
+    private boolean isTaxExempt(OfflinePlayer player, org.cubexmc.ecobalancer.policies.TaxPolicy policy,
+            TaxOperationType operationType) {
+        if (!getConfig().getBoolean("tax-exempt.enabled", true)) {
+            return false;
+        }
+        String globalPerm = getConfig().getString("tax-exempt.global-permission",
+                getConfig().getString("tax-exempt-permission", "ecobalancer.exempt"));
+        if (hasPermission(player, globalPerm)) {
+            return true;
+        }
+        if (policy != null && policy.getExemptPermission() != null && !policy.getExemptPermission().trim().isEmpty()
+                && hasPermission(player, policy.getExemptPermission())) {
+            return true;
+        }
+        String policyPrefix = getConfig().getString("tax-exempt.policy-permission-prefix",
+                "ecobalancer.exempt.policy");
+        if (policy != null && hasPermission(player, policyPrefix + "." + policy.getName())) {
+            return true;
+        }
+        String operationPrefix = getConfig().getString("tax-exempt.operation-permission-prefix",
+                "ecobalancer.exempt.operation");
+        return operationType != null && hasPermission(player, operationPrefix + "." + operationType.getConfigKey());
+    }
+
+    private boolean hasPermission(OfflinePlayer player, String permission) {
+        if (player == null || permission == null || permission.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            if (player.isOnline() && player.getPlayer() != null && player.getPlayer().hasPermission(permission)) {
+                return true;
+            }
+            if (perms != null && !Bukkit.getWorlds().isEmpty()) {
+                return perms.playerHas(Bukkit.getWorlds().get(0).getName(), player, permission);
+            }
+            return player.isOp();
+        } catch (Throwable t) {
+            getLogger().log(Level.FINE, "Failed to check tax exemption permission", t);
+            return false;
+        }
+    }
+
+    private void runDebtCommandsIfNeeded(OfflinePlayer player, TaxDecision decision) {
+        if (decision == null || decision.getResult() != TaxDecisionResult.INSUFFICIENT_BALANCE_SKIPPED
+                && decision.getResult() != TaxDecisionResult.DRAINED_TO_ZERO) {
+            return;
+        }
+        List<String> commands = getConfig().getStringList("debt-commands");
+        if (commands == null || commands.isEmpty()) {
+            return;
+        }
+        String playerName = player.getName() == null ? "Unknown" : player.getName();
+        for (String command : commands) {
+            if (command == null || command.trim().isEmpty()) {
+                continue;
+            }
+            String parsed = command.replace("%player%", playerName)
+                    .replace("%requested%", String.format("%.2f", decision.getRequestedDeduction()))
+                    .replace("%actual%", String.format("%.2f", decision.getActualDeduction()));
+            SchedulerUtils.runTask(this, () -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), parsed));
+        }
+    }
+
+    private void recordDecision(OfflinePlayer player, TaxDecision decision, boolean isCheckAll, TaxContext context) {
+        if (!getConfig().getBoolean("record-zero-deduction", true)
+                && Math.abs(decision.getActualDeduction()) < 1e-9
+                && decision.getResult() == TaxDecisionResult.ZERO_DEDUCTION) {
+            return;
+        }
+        saveRecord(player, decision, isCheckAll, context);
     }
 
     private long calculateDelayForDaily(Calendar now, int hours, int minutes) {
@@ -544,6 +742,9 @@ public final class EcoBalancer extends JavaPlugin {
 
     private long calculateDelayForWeekly(Calendar now, org.cubexmc.ecobalancer.policies.TaxPolicy p) {
         List<Integer> scheduleDaysOfWeek = p.getScheduleDaysOfWeek();
+        if (scheduleDaysOfWeek == null || scheduleDaysOfWeek.isEmpty()) {
+            scheduleDaysOfWeek = java.util.Collections.singletonList(1);
+        }
         int today = now.get(Calendar.DAY_OF_WEEK);
         if (scheduleDaysOfWeek.contains(today)) {
             // 如果还没到计划时间，返回今天的延迟
@@ -576,6 +777,9 @@ public final class EcoBalancer extends JavaPlugin {
 
     private long calculateDelayForMonthly(Calendar now, org.cubexmc.ecobalancer.policies.TaxPolicy p) {
         List<Integer> scheduleDatesOfMonth = p.getScheduleDatesOfMonth();
+        if (scheduleDatesOfMonth == null || scheduleDatesOfMonth.isEmpty()) {
+            scheduleDatesOfMonth = java.util.Collections.singletonList(1);
+        }
         int dayOfMonth = now.get(Calendar.DAY_OF_MONTH);
         if (scheduleDatesOfMonth.contains(dayOfMonth)) {
             // 如果还没到计划时间，返回今天的延迟
@@ -605,8 +809,16 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     private void scheduleCheck(long delay) {
+        nextScheduledRunMillis = System.currentTimeMillis() + Math.max(0L, delay) * 50L;
         SchedulerUtils.runTaskLater(this, () -> {
-            checkAll(null); // 运行任务
+            org.cubexmc.ecobalancer.policies.TaxPolicy active = policyManager.getActivePolicy();
+            if (active == null || !active.isRoutine()) {
+                getLogger().info("Scheduled tax run skipped because the active policy is manual-only or missing.");
+            } else if (taxRunService != null && taxRunService.isRunning()) {
+                getLogger().info("Scheduled tax run skipped because another tax run is in progress.");
+            } else {
+                checkAll(null); // 运行任务
+            }
 
             // 任务完成后，计划下一个任务
             scheduleCheck(calculateNextDelay());
@@ -616,11 +828,29 @@ public final class EcoBalancer extends JavaPlugin {
     public void checkPlayer(CommandSender sender, String playerName) {
         OfflinePlayer target = Bukkit.getOfflinePlayer(playerName);
         if (target.hasPlayedBefore()) {
+            if (taxRunService != null && taxRunService.isRunning()) {
+                sendTaxRunBusy(sender);
+                return;
+            }
             long currentTime = System.currentTimeMillis();
             // Batched capture of metrics before the operation
             computeMetricsSnapshotBatched(sender, 200, 1L, before -> {
                 final int operationId = getNextOperationId(false); // false for checkPlayer
-                checkBalance(sender, currentTime, target, true, false, operationId);
+                org.cubexmc.ecobalancer.policies.TaxPolicy policy = policyManager.getActivePolicy();
+                String policyName = policy == null ? "default" : policy.getName();
+                if (taxRunService != null
+                        && !taxRunService.tryStart(operationId, policyName, TaxOperationType.CHECK_PLAYER, 1, sender)) {
+                    sendTaxRunBusy(sender);
+                    return;
+                }
+                try {
+                    checkBalance(sender, currentTime, target, true, false, operationId);
+                    taxRunService.updateProgress(1, DatabaseUtils.getAffectedPlayersCount(this, operationId, getLogger()),
+                            DatabaseUtils.calculateTotalDeduction(this, operationId, getLogger()));
+                } finally {
+                    if (taxRunService != null)
+                        taxRunService.finish();
+                }
                 // Persist impact after a short delay to allow async record saves to complete
                 saveImpactAfterDelay(operationId, before, 60L);
             });
@@ -655,8 +885,14 @@ public final class EcoBalancer extends JavaPlugin {
     public void executePolicy(CommandSender sender, String policyName, AnalysisFilters.FilterCriteria criteria) {
         org.cubexmc.ecobalancer.policies.TaxPolicy policy = policyManager.getPolicy(policyName);
         if (policy == null) {
-            sender.sendMessage(getFormattedMessage("messages.policy_not_found",
-                    java.util.Collections.singletonMap("name", policyName)));
+            if (sender != null) {
+                sender.sendMessage(getFormattedMessage("messages.policy_not_found",
+                        java.util.Collections.singletonMap("name", policyName)));
+            }
+            return;
+        }
+        if (taxRunService != null && taxRunService.isRunning()) {
+            sendTaxRunBusy(sender);
             return;
         }
 
@@ -673,17 +909,26 @@ public final class EcoBalancer extends JavaPlugin {
         final List<OfflinePlayer> players = (criteria == null)
                 ? Arrays.asList(Bukkit.getOfflinePlayers())
                 : AnalysisFilters.collectFilteredPlayers(criteria, statsWorld);
+        final AnalysisFilters.FilterCriteria finalCriteria = criteria;
         final int batchSize = 100;
         final int delay = 10;
 
         Map<String, String> startPh = new HashMap<>();
         startPh.put("policy", policyName);
         startPh.put("player_count", String.valueOf(players.size()));
-        sender.sendMessage(getFormattedMessage("messages.executing_policy", startPh));
+        if (sender != null) {
+            sender.sendMessage(getFormattedMessage("messages.executing_policy", startPh));
+        }
 
         computeMetricsSnapshotBatched(sender, 200, 1L, players, before -> {
             final int operationId = getNextOperationId(true);
             final org.cubexmc.ecobalancer.policies.TaxPolicy finalPolicy = policy;
+            if (taxRunService != null
+                    && !taxRunService.tryStart(operationId, policyName, TaxOperationType.POLICY_EXECUTE,
+                            players.size(), sender)) {
+                sendTaxRunBusy(sender);
+                return;
+            }
 
             class BatchRunnable implements Runnable {
                 private int index = 0;
@@ -694,9 +939,14 @@ public final class EcoBalancer extends JavaPlugin {
                     int end = Math.min(index + batchSize, players.size());
                     for (int i = index; i < end; i++) {
                         OfflinePlayer player = players.get(i);
-                        checkBalance(null, currentTime, player, false, true, operationId, finalPolicy);
+                        TaxContext context = new TaxContext(operationId, finalPolicy.getName(),
+                                TaxOperationType.POLICY_EXECUTE, currentTime, true, finalCriteria);
+                        checkBalance(null, currentTime, player, false, true, operationId, finalPolicy, context);
                     }
                     index += batchSize;
+                    if (taxRunService != null) {
+                        taxRunService.updateProgress(index, 0, 0.0);
+                    }
 
                     Map<String, String> placeholders = new HashMap<>();
                     placeholders.put("start", Integer.toString(start));
@@ -709,12 +959,24 @@ public final class EcoBalancer extends JavaPlugin {
                         SchedulerUtils.runTaskLater(EcoBalancer.this, this, delay);
                     } else {
                         calculateTotalDeduction(operationId);
+                        double totalDeduction = DatabaseUtils.calculateTotalDeduction(EcoBalancer.this, operationId,
+                                getLogger());
+                        int affected = DatabaseUtils.getAffectedPlayersCount(EcoBalancer.this, operationId,
+                                getLogger());
+                        if (taxRunService != null) {
+                            taxRunService.updateProgress(players.size(), affected, totalDeduction);
+                        }
                         SchedulerUtils.runTask(EcoBalancer.this, () -> {
                             Map<String, String> donePh = new HashMap<>();
                             donePh.put("policy", policyName);
-                            sender.sendMessage(getFormattedMessage("messages.policy_executed", donePh));
+                            if (sender != null) {
+                                sender.sendMessage(getFormattedMessage("messages.policy_executed", donePh));
+                            }
                         });
                         saveImpactAfterDelay(operationId, before, 100L);
+                        if (taxRunService != null) {
+                            taxRunService.finish();
+                        }
                     }
                 }
             }
@@ -724,6 +986,10 @@ public final class EcoBalancer extends JavaPlugin {
     }
 
     public void checkAll(CommandSender sender, AnalysisFilters.FilterCriteria criteria) {
+        if (taxRunService != null && taxRunService.isRunning()) {
+            sendTaxRunBusy(sender);
+            return;
+        }
         final long currentTime = System.currentTimeMillis();
         // Resolve filters: from parameter or from config tax-filters
         String filterStrFromCfg = null;
@@ -737,6 +1003,7 @@ public final class EcoBalancer extends JavaPlugin {
         final List<OfflinePlayer> players = (criteria == null)
                 ? Arrays.asList(Bukkit.getOfflinePlayers())
                 : AnalysisFilters.collectFilteredPlayers(criteria, statsWorld);
+        final AnalysisFilters.FilterCriteria finalCriteria = criteria;
         final int batchSize = 100; // Number of players to process at once
         final int delay = 10; // Delay in ticks between batches (20 ticks = 1 second)
 
@@ -752,6 +1019,14 @@ public final class EcoBalancer extends JavaPlugin {
 
         computeMetricsSnapshotBatched(sender, 200, 1L, players, before -> {
             final int operationId = getNextOperationId(true);
+            org.cubexmc.ecobalancer.policies.TaxPolicy activePolicy = policyManager.getActivePolicy();
+            String policyName = activePolicy == null ? "default" : activePolicy.getName();
+            TaxOperationType trigger = sender == null ? TaxOperationType.SCHEDULED : TaxOperationType.CHECK_ALL;
+            if (taxRunService != null
+                    && !taxRunService.tryStart(operationId, policyName, trigger, players.size(), sender)) {
+                sendTaxRunBusy(sender);
+                return;
+            }
 
             class BatchRunnable implements Runnable {
                 private int index = 0;
@@ -762,9 +1037,16 @@ public final class EcoBalancer extends JavaPlugin {
                     int end = Math.min(index + batchSize, players.size());
                     for (int i = index; i < end; i++) {
                         OfflinePlayer player = players.get(i);
-                        checkBalance(null, currentTime, player, false, true, operationId);
+                        org.cubexmc.ecobalancer.policies.TaxPolicy currentPolicy = policyManager.getActivePolicy();
+                        TaxContext context = new TaxContext(operationId,
+                                currentPolicy == null ? "default" : currentPolicy.getName(), trigger, currentTime,
+                                true, finalCriteria);
+                        checkBalance(null, currentTime, player, false, true, operationId, currentPolicy, context);
                     }
                     index += batchSize;
+                    if (taxRunService != null) {
+                        taxRunService.updateProgress(index, 0, 0.0);
+                    }
 
                     Map<String, String> placeholders = new HashMap<>();
                     placeholders.put("start", Integer.toString(start));
@@ -777,10 +1059,20 @@ public final class EcoBalancer extends JavaPlugin {
                         SchedulerUtils.runTaskLater(EcoBalancer.this, this, delay);
                     } else {
                         calculateTotalDeduction(operationId);
+                        double totalDeduction = DatabaseUtils.calculateTotalDeduction(EcoBalancer.this, operationId,
+                                getLogger());
+                        int affected = DatabaseUtils.getAffectedPlayersCount(EcoBalancer.this, operationId,
+                                getLogger());
+                        if (taxRunService != null) {
+                            taxRunService.updateProgress(players.size(), affected, totalDeduction);
+                        }
                         SchedulerUtils.runTask(EcoBalancer.this, () -> {
                             sendMessage(sender, "messages.all_players_processed", null, true);
                         });
                         saveImpactAfterDelay(operationId, before, 100L);
+                        if (taxRunService != null) {
+                            taxRunService.finish();
+                        }
                     }
                 }
             }
@@ -903,6 +1195,15 @@ public final class EcoBalancer extends JavaPlugin {
         // 在异步线程写库，避免阻塞主线程
         SchedulerUtils.runTaskAsync(this, () -> DatabaseUtils.saveRecord(this, player, oldBalance, newBalance,
                 deduction, isCheckAll, operationId, getLogger()));
+    }
+
+    private void saveRecord(OfflinePlayer player, TaxDecision decision, boolean isCheckAll, TaxContext context) {
+        SchedulerUtils.runTaskAsync(this,
+                () -> DatabaseUtils.saveRecord(this, player, decision.getOldBalance(), decision.getNewBalance(),
+                        decision.getActualDeduction(), isCheckAll, context.getOperationId(), context.getPolicyName(),
+                        context.getOperationType() == null ? null : context.getOperationType().getConfigKey(),
+                        decision.getResult().name(), decision.getReason(), decision.getRequestedDeduction(),
+                        decision.getActualDeduction(), getLogger()));
     }
 
     private void cleanupRecords() {

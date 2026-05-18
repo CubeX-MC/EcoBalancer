@@ -50,12 +50,35 @@ public class EcoTabCompleter implements TabCompleter {
                     break;
                 case "policy":
                     if (subArgs.length == 1) {
-                        StringUtil.copyPartialMatches(subArgs[0], Arrays.asList("list", "set", "execute"), completions);
+                        StringUtil.copyPartialMatches(subArgs[0], Arrays.asList("list", "set", "execute", "create", "delete", "clone", "rename", "info", "edit"), completions);
                         return completions;
                     } else if (subArgs.length == 2
-                            && (subArgs[0].equalsIgnoreCase("set") || subArgs[0].equalsIgnoreCase("execute"))) {
+                            && Arrays.asList("set", "execute", "delete", "clone", "rename", "info", "edit").contains(subArgs[0].toLowerCase())) {
                         StringUtil.copyPartialMatches(subArgs[1], plugin.getPolicyManager().getPolicyNames(),
                                 completions);
+                        return completions;
+                    } else if (subArgs.length == 3 && subArgs[0].equalsIgnoreCase("edit")) {
+                        StringUtil.copyPartialMatches(subArgs[2], Arrays.asList("schedule", "time", "days", "dates", "inactive", "clear", "bracket", "mode", "debt"), completions);
+                        return completions;
+                    } else if (subArgs.length > 3 && subArgs[0].equalsIgnoreCase("edit")) {
+                        String property = subArgs[2].toLowerCase();
+                        String[] editArgs = Arrays.copyOfRange(subArgs, 3, subArgs.length);
+                        if (property.equals("schedule") && editArgs.length == 1) {
+                            StringUtil.copyPartialMatches(editArgs[0], Arrays.asList("daily", "weekly", "monthly"), completions);
+                        } else if (property.equals("mode") && editArgs.length == 1) {
+                            StringUtil.copyPartialMatches(editArgs[0], Arrays.asList("absolute", "percentile"), completions);
+                        } else if (property.equals("debt") && editArgs.length == 1) {
+                            StringUtil.copyPartialMatches(editArgs[0], Arrays.asList("inherit", "skip", "drain", "allow-negative"), completions);
+                        } else if (property.equals("bracket") && editArgs.length == 1) {
+                            StringUtil.copyPartialMatches(editArgs[0], Arrays.asList("add", "remove", "list", "clear"), completions);
+                        } else if (property.equals("bracket") && editArgs.length == 2 && editArgs[0].equalsIgnoreCase("remove")) {
+                            org.cubexmc.ecobalancer.policies.TaxPolicy p = plugin.getPolicyManager().getPolicy(subArgs[1]);
+                            if (p != null) {
+                                List<String> brackets = new ArrayList<>();
+                                p.getTaxBrackets().forEach(m -> brackets.add(String.valueOf(m.get("threshold"))));
+                                StringUtil.copyPartialMatches(editArgs[1], brackets, completions);
+                            }
+                        }
                         return completions;
                     }
                     break;
@@ -109,14 +132,14 @@ public class EcoTabCompleter implements TabCompleter {
                 case "tax":
                     if (subArgs.length == 1) {
                         List<String> taxSubs = Arrays.asList("policy", "show", "schedule", "time", "days",
-                                "dates", "inactive", "clear", "bracket", "mode", "filter",
-                                "account", "save", "reload");
+                                "dates", "inactive", "clear", "bracket", "mode", "debt", "filter",
+                                "account", "status", "fund", "stats", "save", "reload");
                         StringUtil.copyPartialMatches(subArgs[0], taxSubs, completions);
                         return completions;
                     } else if (subArgs.length == 2) {
                         switch (subArgs[0].toLowerCase()) {
                             case "policy":
-                                StringUtil.copyPartialMatches(subArgs[1], Arrays.asList("list", "set", "execute"),
+                                StringUtil.copyPartialMatches(subArgs[1], Arrays.asList("list", "set", "execute", "create", "delete", "clone", "info", "edit"),
                                         completions);
                                 return completions;
                             case "schedule":
@@ -146,6 +169,10 @@ public class EcoTabCompleter implements TabCompleter {
                                 StringUtil.copyPartialMatches(subArgs[1], Arrays.asList("absolute", "percentile"),
                                         completions);
                                 return completions;
+                            case "debt":
+                                StringUtil.copyPartialMatches(subArgs[1],
+                                        Arrays.asList("inherit", "skip", "drain", "allow-negative"), completions);
+                                return completions;
                             case "bracket":
                                 StringUtil.copyPartialMatches(subArgs[1],
                                         Arrays.asList("add", "remove", "list", "clear"), completions);
@@ -156,11 +183,34 @@ public class EcoTabCompleter implements TabCompleter {
                                 return completions;
                         }
                     } else if (subArgs.length == 3 && subArgs[0].equalsIgnoreCase("policy")) {
-                        if (subArgs[1].equalsIgnoreCase("set") || subArgs[1].equalsIgnoreCase("execute")) {
+                        if (Arrays.asList("set", "execute", "delete", "clone", "info", "edit").contains(subArgs[1].toLowerCase())) {
                             StringUtil.copyPartialMatches(subArgs[2], plugin.getPolicyManager().getPolicyNames(),
                                     completions);
                             return completions;
                         }
+                    } else if (subArgs.length == 4 && subArgs[0].equalsIgnoreCase("policy") && subArgs[1].equalsIgnoreCase("edit")) {
+                        StringUtil.copyPartialMatches(subArgs[3], Arrays.asList("schedule", "time", "days", "dates", "inactive", "clear", "bracket", "mode", "debt"), completions);
+                        return completions;
+                    } else if (subArgs.length > 4 && subArgs[0].equalsIgnoreCase("policy") && subArgs[1].equalsIgnoreCase("edit")) {
+                        String property = subArgs[3].toLowerCase();
+                        String[] editArgs = Arrays.copyOfRange(subArgs, 4, subArgs.length);
+                        if (property.equals("schedule") && editArgs.length == 1) {
+                            StringUtil.copyPartialMatches(editArgs[0], Arrays.asList("daily", "weekly", "monthly"), completions);
+                        } else if (property.equals("mode") && editArgs.length == 1) {
+                            StringUtil.copyPartialMatches(editArgs[0], Arrays.asList("absolute", "percentile"), completions);
+                        } else if (property.equals("debt") && editArgs.length == 1) {
+                            StringUtil.copyPartialMatches(editArgs[0], Arrays.asList("inherit", "skip", "drain", "allow-negative"), completions);
+                        } else if (property.equals("bracket") && editArgs.length == 1) {
+                            StringUtil.copyPartialMatches(editArgs[0], Arrays.asList("add", "remove", "list", "clear"), completions);
+                        } else if (property.equals("bracket") && editArgs.length == 2 && editArgs[0].equalsIgnoreCase("remove")) {
+                            org.cubexmc.ecobalancer.policies.TaxPolicy p = plugin.getPolicyManager().getPolicy(subArgs[2]);
+                            if (p != null) {
+                                List<String> brackets = new ArrayList<>();
+                                p.getTaxBrackets().forEach(m -> brackets.add(String.valueOf(m.get("threshold"))));
+                                StringUtil.copyPartialMatches(editArgs[1], brackets, completions);
+                            }
+                        }
+                        return completions;
                     } else if (subArgs.length == 3) {
                         if (subArgs[0].equalsIgnoreCase("bracket") && subArgs[1].equalsIgnoreCase("remove")) {
                             // Suggest existing brackets

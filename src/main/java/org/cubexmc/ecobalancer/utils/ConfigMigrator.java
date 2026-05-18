@@ -21,8 +21,8 @@ public class ConfigMigrator {
     private final Logger logger;
 
     // Increment these when config structure changes
-    public static final int CURRENT_CONFIG_VERSION = 3;
-    public static final int CURRENT_LANG_VERSION = 2; // Lang version unchanged for now
+    public static final int CURRENT_CONFIG_VERSION = 4;
+    public static final int CURRENT_LANG_VERSION = 3;
 
     public ConfigMigrator(EcoBalancer plugin) {
         this.plugin = plugin;
@@ -73,6 +73,11 @@ public class ConfigMigrator {
                 logger.info("Applied V2 -> V3 migration (Policy Extraction)");
             }
         }
+        if (currentVersion < 4) {
+            if (migrateConfigV3ToV4(config, defaultConfig)) {
+                logger.info("Applied V3 -> V4 migration (Tax safety and ledger defaults)");
+            }
+        }
 
         // Merge any new keys from default config
         mergeNewKeys(config, defaultConfig, "");
@@ -89,6 +94,25 @@ public class ConfigMigrator {
             logger.severe("Failed to save migrated config: " + e.getMessage());
             return false;
         }
+    }
+
+    private boolean migrateConfigV3ToV4(FileConfiguration config, FileConfiguration defaults) {
+        boolean changed = false;
+        String[] keys = {
+                "tax-exempt.enabled",
+                "tax-exempt.global-permission",
+                "tax-exempt.policy-permission-prefix",
+                "tax-exempt.operation-permission-prefix",
+                "debt-mode",
+                "debt-commands"
+        };
+        for (String key : keys) {
+            if (!config.contains(key) && defaults.contains(key)) {
+                config.set(key, defaults.get(key));
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     /**
@@ -185,6 +209,8 @@ public class ConfigMigrator {
         defaultPolicy.set("settings.inactive-days-deduct", config.getInt("inactive-days-to-deduct", 0));
         defaultPolicy.set("settings.inactive-days-clear", config.getInt("inactive-days-to-clear", 0));
         defaultPolicy.set("settings.percentile", config.getBoolean("percentile-thresholds", false)); // If exists
+        defaultPolicy.set("settings.exempt-permission", "");
+        defaultPolicy.set("settings.debt-mode", "inherit");
 
         // Brackets
         List<Map<String, Object>> brackets = new ArrayList<>();

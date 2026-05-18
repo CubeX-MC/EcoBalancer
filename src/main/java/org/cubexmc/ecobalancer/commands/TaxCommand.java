@@ -3,8 +3,14 @@ package org.cubexmc.ecobalancer.commands;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.cubexmc.ecobalancer.EcoBalancer;
 import org.cubexmc.ecobalancer.policies.TaxPolicy;
+import org.cubexmc.ecobalancer.tax.TaxLedgerService;
+import org.cubexmc.ecobalancer.tax.TaxRunState;
+import org.cubexmc.ecobalancer.utils.EconomicMetrics;
+import org.cubexmc.ecobalancer.utils.SchedulerUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -44,25 +50,33 @@ public class TaxCommand implements CommandExecutor {
                 showCurrentConfig(sender);
                 return true;
             case "schedule":
-                return handleSchedule(sender, subArgs);
+                return handleSchedule(sender, getPolicy(sender), subArgs);
             case "time":
-                return handleTime(sender, subArgs);
+                return handleTime(sender, getPolicy(sender), subArgs);
             case "days":
-                return handleDays(sender, subArgs);
+                return handleDays(sender, getPolicy(sender), subArgs);
             case "dates":
-                return handleDates(sender, subArgs);
+                return handleDates(sender, getPolicy(sender), subArgs);
             case "inactive":
-                return handleInactive(sender, subArgs);
+                return handleInactive(sender, getPolicy(sender), subArgs);
             case "clear":
-                return handleClear(sender, subArgs);
+                return handleClear(sender, getPolicy(sender), subArgs);
             case "bracket":
-                return handleBracket(sender, subArgs);
+                return handleBracket(sender, getPolicy(sender), subArgs);
             case "mode":
-                return handleMode(sender, subArgs);
+                return handleMode(sender, getPolicy(sender), subArgs);
             case "filter":
                 return handleFilter(sender, subArgs);
             case "account":
                 return handleAccount(sender, subArgs);
+            case "debt":
+                return handleDebt(sender, getPolicy(sender), subArgs);
+            case "status":
+                return handleStatus(sender);
+            case "fund":
+                return handleFund(sender);
+            case "stats":
+                return handleTaxStats(sender, subArgs);
             case "save":
                 return handleSave(sender);
             case "reload":
@@ -115,6 +129,34 @@ public class TaxCommand implements CommandExecutor {
                 sender.sendMessage(plugin.getFormattedMessage("messages.policy_not_found",
                         java.util.Collections.singletonMap("name", name)));
             }
+        } else if (action.equals("info")) {
+            if (args.length < 2) {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_info_usage", null));
+                return true;
+            }
+            String name = args[1];
+            TaxPolicy policy = plugin.getPolicyManager().getPolicy(name);
+            if (policy != null) {
+                showPolicyInfo(sender, policy);
+            } else {
+                sender.sendMessage(plugin.getFormattedMessage("messages.policy_not_found",
+                        java.util.Collections.singletonMap("name", name)));
+            }
+        } else if (action.equals("edit")) {
+            if (args.length < 3) {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_edit_usage", null));
+                return true;
+            }
+            String name = args[1];
+            TaxPolicy policy = plugin.getPolicyManager().getPolicy(name);
+            if (policy != null) {
+                String property = args[2].toLowerCase();
+                String[] editArgs = Arrays.copyOfRange(args, 3, args.length);
+                handlePolicyEdit(sender, policy, property, editArgs);
+            } else {
+                sender.sendMessage(plugin.getFormattedMessage("messages.policy_not_found",
+                        java.util.Collections.singletonMap("name", name)));
+            }
         } else if (action.equals("execute")) {
             if (args.length < 2) {
                 sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_execute_usage", null));
@@ -130,10 +172,92 @@ public class TaxCommand implements CommandExecutor {
                 sender.sendMessage(plugin.getFormattedMessage("messages.policy_not_found",
                         java.util.Collections.singletonMap("name", name)));
             }
+        } else if (action.equals("create")) {
+            if (args.length < 2) {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_create_usage", null));
+                return true;
+            }
+            String name = args[1];
+            if (plugin.getPolicyManager().createPolicy(name)) {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_create_success",
+                        java.util.Collections.singletonMap("name", name)));
+            } else {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_already_exists",
+                        java.util.Collections.singletonMap("name", name)));
+            }
+        } else if (action.equals("delete")) {
+            if (args.length < 2) {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_delete_usage", null));
+                return true;
+            }
+            String name = args[1];
+            if (plugin.getPolicyManager().deletePolicy(name)) {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_delete_success",
+                        java.util.Collections.singletonMap("name", name)));
+            } else {
+                sender.sendMessage(plugin.getFormattedMessage("messages.policy_not_found",
+                        java.util.Collections.singletonMap("name", name)));
+            }
+        } else if (action.equals("clone")) {
+            if (args.length < 3) {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_clone_usage", null));
+                return true;
+            }
+            String source = args[1];
+            String target = args[2];
+            if (plugin.getPolicyManager().clonePolicy(source, target)) {
+                Map<String, String> ph = new HashMap<>();
+                ph.put("source", source);
+                ph.put("target", target);
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_clone_success", ph));
+            } else {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_clone_failed", null));
+            }
+        } else if (action.equals("rename")) {
+            if (args.length < 3) {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_rename_usage", null));
+                return true;
+            }
+            String oldName = args[1];
+            String newName = args[2];
+            if (plugin.getPolicyManager().renamePolicy(oldName, newName)) {
+                Map<String, String> ph = new HashMap<>();
+                ph.put("old", oldName);
+                ph.put("new", newName);
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_rename_success", ph));
+            } else {
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.policy_rename_failed", null));
+            }
         } else {
             sender.sendMessage(plugin.getFormattedMessage("messages.tax.unknown_action", null));
         }
         return true;
+    }
+
+    private boolean handlePolicyEdit(CommandSender sender, TaxPolicy policy, String property, String[] args) {
+        switch (property) {
+            case "schedule":
+                return handleSchedule(sender, policy, args);
+            case "time":
+                return handleTime(sender, policy, args);
+            case "days":
+                return handleDays(sender, policy, args);
+            case "dates":
+                return handleDates(sender, policy, args);
+            case "inactive":
+                return handleInactive(sender, policy, args);
+            case "clear":
+                return handleClear(sender, policy, args);
+            case "bracket":
+                return handleBracket(sender, policy, args);
+            case "mode":
+                return handleMode(sender, policy, args);
+            case "debt":
+                return handleDebt(sender, policy, args);
+            default:
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.unknown_action", null));
+                return true;
+        }
     }
 
     private void showCurrentConfig(CommandSender sender) {
@@ -142,7 +266,10 @@ public class TaxCommand implements CommandExecutor {
             sender.sendMessage(plugin.getFormattedMessage("messages.tax.no_active_policy_selected", null));
             return;
         }
+        showPolicyInfo(sender, policy);
+    }
 
+    private void showPolicyInfo(CommandSender sender, TaxPolicy policy) {
         Map<String, String> ph = new HashMap<>();
 
         sender.sendMessage(plugin.getFormattedMessage("messages.tax.show_header", null));
@@ -189,6 +316,16 @@ public class TaxCommand implements CommandExecutor {
         ph.put("name", plugin.getTaxAccountName() != null ? plugin.getTaxAccountName() : "(not set)");
         sender.sendMessage(plugin.getFormattedMessage("messages.tax.account_line", ph));
 
+        ph.clear();
+        ph.put("mode", policy.getDebtMode() == null ? "inherit" : policy.getDebtMode());
+        ph.put("global", plugin.getConfig().getString("debt-mode", "skip"));
+        sender.sendMessage(plugin.getFormattedMessage("messages.tax.debt_line", ph));
+
+        ph.clear();
+        String exempt = policy.getExemptPermission();
+        ph.put("permission", exempt == null || exempt.trim().isEmpty() ? "(global/default)" : exempt);
+        sender.sendMessage(plugin.getFormattedMessage("messages.tax.exempt_line", ph));
+
         // Tax brackets
         sender.sendMessage(plugin.getFormattedMessage("messages.tax.brackets_header", null));
         List<Map<String, Object>> brackets = policy.getTaxBrackets();
@@ -209,7 +346,7 @@ public class TaxCommand implements CommandExecutor {
         }
 
         // Unsaved changes indicator
-        if (hasUnsavedChanges) {
+        if (hasUnsavedChanges && plugin.getPolicyManager().getActivePolicy() != null && plugin.getPolicyManager().getActivePolicy().getName().equals(policy.getName())) {
             sender.sendMessage(plugin.getFormattedMessage("messages.tax.unsaved_changes",
                     java.util.Collections.singletonMap("policy", policy.getName())));
         }
@@ -241,8 +378,7 @@ public class TaxCommand implements CommandExecutor {
         return p;
     }
 
-    private boolean handleSchedule(CommandSender sender, String[] args) {
-        TaxPolicy policy = getPolicy(sender);
+    private boolean handleSchedule(CommandSender sender, TaxPolicy policy, String[] args) {
         if (policy == null)
             return true;
 
@@ -266,8 +402,7 @@ public class TaxCommand implements CommandExecutor {
         return true;
     }
 
-    private boolean handleTime(CommandSender sender, String[] args) {
-        TaxPolicy policy = getPolicy(sender);
+    private boolean handleTime(CommandSender sender, TaxPolicy policy, String[] args) {
         if (policy == null)
             return true;
 
@@ -301,8 +436,7 @@ public class TaxCommand implements CommandExecutor {
         return true;
     }
 
-    private boolean handleDays(CommandSender sender, String[] args) {
-        TaxPolicy policy = getPolicy(sender);
+    private boolean handleDays(CommandSender sender, TaxPolicy policy, String[] args) {
         if (policy == null)
             return true;
 
@@ -336,8 +470,7 @@ public class TaxCommand implements CommandExecutor {
         return true;
     }
 
-    private boolean handleDates(CommandSender sender, String[] args) {
-        TaxPolicy policy = getPolicy(sender);
+    private boolean handleDates(CommandSender sender, TaxPolicy policy, String[] args) {
         if (policy == null)
             return true;
 
@@ -371,8 +504,7 @@ public class TaxCommand implements CommandExecutor {
         return true;
     }
 
-    private boolean handleInactive(CommandSender sender, String[] args) {
-        TaxPolicy policy = getPolicy(sender);
+    private boolean handleInactive(CommandSender sender, TaxPolicy policy, String[] args) {
         if (policy == null)
             return true;
 
@@ -400,8 +532,7 @@ public class TaxCommand implements CommandExecutor {
     // ... skipping duplicate structure for handleClear for brevity in thought,
     // will implement fully.
 
-    private boolean handleClear(CommandSender sender, String[] args) {
-        TaxPolicy policy = getPolicy(sender);
+    private boolean handleClear(CommandSender sender, TaxPolicy policy, String[] args) {
         if (policy == null)
             return true;
 
@@ -426,7 +557,7 @@ public class TaxCommand implements CommandExecutor {
         return true;
     }
 
-    private boolean handleBracket(CommandSender sender, String[] args) {
+    private boolean handleBracket(CommandSender sender, TaxPolicy policy, String[] args) {
         if (args.length == 0) {
             sender.sendMessage(plugin.getFormattedMessage("messages.tax.bracket_usage", null));
             return true;
@@ -435,21 +566,20 @@ public class TaxCommand implements CommandExecutor {
         String[] actionArgs = Arrays.copyOfRange(args, 1, args.length);
         switch (action) {
             case "add":
-                return handleBracketAdd(sender, actionArgs);
+                return handleBracketAdd(sender, policy, actionArgs);
             case "remove":
-                return handleBracketRemove(sender, actionArgs);
+                return handleBracketRemove(sender, policy, actionArgs);
             case "list":
-                return handleBracketList(sender);
+                return handleBracketList(sender, policy);
             case "clear":
-                return handleBracketClear(sender);
+                return handleBracketClear(sender, policy);
             default:
                 sender.sendMessage(plugin.getFormattedMessage("messages.tax.bracket_usage", null));
                 return true;
         }
     }
 
-    private boolean handleBracketAdd(CommandSender sender, String[] args) {
-        TaxPolicy policy = getPolicy(sender);
+    private boolean handleBracketAdd(CommandSender sender, TaxPolicy policy, String[] args) {
         if (policy == null)
             return true;
 
@@ -502,8 +632,7 @@ public class TaxCommand implements CommandExecutor {
         return (int) (Double.parseDouble(input) * multiplier);
     }
 
-    private boolean handleBracketRemove(CommandSender sender, String[] args) {
-        TaxPolicy policy = getPolicy(sender);
+    private boolean handleBracketRemove(CommandSender sender, TaxPolicy policy, String[] args) {
         if (policy == null)
             return true;
 
@@ -533,13 +662,12 @@ public class TaxCommand implements CommandExecutor {
         return true;
     }
 
-    private boolean handleBracketList(CommandSender sender) {
-        showCurrentConfig(sender); // Reuse showing logic
+    private boolean handleBracketList(CommandSender sender, TaxPolicy policy) {
+        showPolicyInfo(sender, policy);
         return true;
     }
 
-    private boolean handleBracketClear(CommandSender sender) {
-        TaxPolicy policy = getPolicy(sender);
+    private boolean handleBracketClear(CommandSender sender, TaxPolicy policy) {
         if (policy == null)
             return true;
 
@@ -549,8 +677,7 @@ public class TaxCommand implements CommandExecutor {
         return true;
     }
 
-    private boolean handleMode(CommandSender sender, String[] args) {
-        TaxPolicy policy = getPolicy(sender);
+    private boolean handleMode(CommandSender sender, TaxPolicy policy, String[] args) {
         if (policy == null)
             return true;
 
@@ -568,6 +695,82 @@ public class TaxCommand implements CommandExecutor {
         Map<String, String> ph = new HashMap<>();
         ph.put("mode", mode);
         sender.sendMessage(plugin.getFormattedMessage("messages.tax.set_mode", ph));
+        return true;
+    }
+
+    private boolean handleDebt(CommandSender sender, TaxPolicy policy, String[] args) {
+        if (policy == null)
+            return true;
+
+        if (args.length == 0) {
+            sender.sendMessage(plugin.getFormattedMessage("messages.tax.debt_usage", null));
+            return true;
+        }
+        String mode = args[0].toLowerCase(Locale.ROOT);
+        if (!mode.equals("inherit") && !mode.equals("skip") && !mode.equals("drain") && !mode.equals("allow-negative")) {
+            sender.sendMessage(plugin.getFormattedMessage("messages.tax.error_invalid_debt_mode", null));
+            return true;
+        }
+        policy.setDebtMode(mode);
+        hasUnsavedChanges = true;
+        Map<String, String> ph = new HashMap<>();
+        ph.put("mode", mode);
+        sender.sendMessage(plugin.getFormattedMessage("messages.tax.set_debt_mode", ph));
+        return true;
+    }
+
+    private boolean handleStatus(CommandSender sender) {
+        TaxRunState state = plugin.getTaxRunService() == null ? null : plugin.getTaxRunService().getState();
+        Map<String, String> ph = new HashMap<>();
+        if (state == null || !state.isRunning()) {
+            sender.sendMessage(plugin.getFormattedMessage("messages.tax.status_idle", null));
+            return true;
+        }
+        ph.put("operation_id", String.valueOf(state.getOperationId()));
+        ph.put("policy", state.getPolicyName());
+        ph.put("processed", String.valueOf(state.getProcessedPlayers()));
+        ph.put("total", String.valueOf(state.getTotalPlayers()));
+        ph.put("affected", String.valueOf(state.getAffectedPlayers()));
+        ph.put("deducted", EconomicMetrics.formatLargeNumber(state.getTotalDeducted()));
+        ph.put("trigger", state.getTrigger() == null ? "unknown" : state.getTrigger().getConfigKey());
+        ph.put("sender", state.getSenderName());
+        sender.sendMessage(plugin.getFormattedMessage("messages.tax.status_running", ph));
+        return true;
+    }
+
+    private boolean handleFund(CommandSender sender) {
+        sender.sendMessage(plugin.getFormattedMessage("messages.tax.fund_loading", null));
+        SchedulerUtils.runTaskAsync(plugin, () -> {
+            TaxLedgerService.ServerTaxStats stats = plugin.getTaxLedgerService().getServerStats();
+            SchedulerUtils.runTask(plugin, () -> {
+                Map<String, String> ph = new HashMap<>();
+                ph.put("balance", EconomicMetrics.formatLargeNumber(stats.taxFundBalance));
+                ph.put("total", EconomicMetrics.formatLargeNumber(stats.totalTaxCollected));
+                ph.put("latest", EconomicMetrics.formatLargeNumber(stats.latestTaxCollected));
+                ph.put("operation_id", String.valueOf(stats.latestOperationId));
+                ph.put("vault_balance", plugin.isTaxAccountEnabled() ? plugin.getTaxAccountBalance() : "disabled");
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.fund_summary", ph));
+            });
+        });
+        return true;
+    }
+
+    private boolean handleTaxStats(CommandSender sender, String[] args) {
+        String targetName = args.length > 0 ? args[0] : sender.getName();
+        OfflinePlayer target = Bukkit.getOfflinePlayer(targetName);
+        sender.sendMessage(plugin.getFormattedMessage("messages.tax.stats_loading", null));
+        SchedulerUtils.runTaskAsync(plugin, () -> {
+            TaxLedgerService.PlayerTaxStats stats = plugin.getTaxLedgerService().getPlayerStats(target);
+            SchedulerUtils.runTask(plugin, () -> {
+                Map<String, String> ph = new HashMap<>();
+                ph.put("player", stats.playerName);
+                ph.put("latest", EconomicMetrics.formatLargeNumber(stats.latestTaxPaid));
+                ph.put("total", EconomicMetrics.formatLargeNumber(stats.totalTaxPaid));
+                ph.put("time", stats.latestTaxTime <= 0 ? "never"
+                        : new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(new java.util.Date(stats.latestTaxTime)));
+                sender.sendMessage(plugin.getFormattedMessage("messages.tax.stats_summary", ph));
+            });
+        });
         return true;
     }
 

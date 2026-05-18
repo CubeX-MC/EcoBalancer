@@ -1,4 +1,4 @@
-config-version: 3
+config-version: 4
 language: 'en_US' # 语言 # Language en_US, zh_CN
 info-on-login: true # 登录时显示用户信息 # Show user info on login
 file-logging: true # 是否将日志写入插件日志文件（最新日志位于 plugins/EcoBalancer/logs/latest.log）# Whether to write messages to plugin log file
@@ -15,6 +15,14 @@ inactive-days-to-clear: 500 # 未上线清空余额的天数 # Days inactive bef
 max-deduction-per-player: 0 # 单次最大扣款额 (0为不限制) # Max deduction per player per cycle (0 for unlimited)
 min-balance-protection: 0 # 余额保护阈值，低于此值不征税 (0为不保护) # Minimum balance protection threshold
 tax-exempt-permission: 'ecobalancer.exempt' # 免税权限节点 # Permission node for tax exemption
+tax-exempt:
+  enabled: true
+  global-permission: 'ecobalancer.exempt'
+  policy-permission-prefix: 'ecobalancer.exempt.policy'
+  operation-permission-prefix: 'ecobalancer.exempt.operation'
+debt-mode: 'skip' # skip, drain, allow-negative # 余额不足处理方式
+debt-commands:
+  - 'broadcast &e%player% &cdoes not have enough money to pay taxes.'
 # 按阶级扣税 # Tax brackets for deductions
 # 阈值解释方式：
 # - 当 percentile-thresholds 为 false 时，threshold 使用“绝对余额”数值（默认行为）

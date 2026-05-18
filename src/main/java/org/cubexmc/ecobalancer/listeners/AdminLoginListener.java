@@ -21,9 +21,9 @@ public class AdminLoginListener implements Listener {
                 Map<String, String> placeholders = new HashMap<>();
                 placeholders.put("tax_account_name", plugin.getTaxAccountName());
                 placeholders.put("tax_account_balance", plugin.getTaxAccountBalance());
-                player.sendMessage(plugin.getFormattedMessage("messages.tax_account_enabled", placeholders));
+                org.cubexmc.ecobalancer.utils.MessageUtils.sendMessage(player, plugin.getFormattedMessage("messages.tax_account_enabled", placeholders), null, false);
             } else {
-                player.sendMessage(plugin.getFormattedMessage("messages.tax_account_disabled", null));
+                org.cubexmc.ecobalancer.utils.MessageUtils.sendMessage(player, plugin.getFormattedMessage("messages.tax_account_disabled", null), null, false);
             }
         }
     }

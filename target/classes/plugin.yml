@@ -14,6 +14,7 @@ softdepend:
   - TheNewEconomy
   - iConomy
   - Gringotts
+  - PlaceholderAPI
 folia-supported: true
 commands:
   ecobal:
@@ -108,3 +109,12 @@ permissions:
   ecobalancer.admin:
     description: Administrative access to EcoBalancer notifications and actions
     default: op
+  ecobalancer.exempt:
+    description: Exempts a player from all EcoBalancer tax policies
+    default: false
+  ecobalancer.exempt.policy:
+    description: Prefix for policy-specific tax exemptions
+    default: false
+  ecobalancer.exempt.operation:
+    description: Prefix for operation-specific tax exemptions
+    default: false

@@ -42,6 +42,9 @@ All commands require the `/ecobal` prefix (or alias `/eb`):
 - `/ecobal gui`: Open GUI dashboard/policy menu
 - `/ecobal migrate <check|run|backup>`: Check/run migration and create backups
 - `/ecobal tax ...`: Manage tax config and policy execution
+- `/ecobal tax status`: Show the current tax run status
+- `/ecobal tax fund`: Show ledger balance, lifetime collected tax, and latest tax run
+- `/ecobal tax stats [player]`: Show a player's latest and lifetime tax paid
 - `/ecobal policy <list|set|execute>`: Alias routed to tax policy management
 
 ### Economic Analysis Commands
@@ -69,6 +72,8 @@ Core:
 - `ecobalancer.gui.admin`: Manage policies in GUI / execute policy
 - `ecobalancer.admin`: Admin notifications and migration operations
 - `ecobalancer.exempt`: Tax exemption node (if enabled by config)
+- `ecobalancer.exempt.policy.<policy>`: Exempt a player from one policy
+- `ecobalancer.exempt.operation.<operation>`: Exempt a player from one operation type, such as `checkall`, `checkplayer`, or `policy`
 
 ## Configuration (config.yml)
 
@@ -95,11 +100,36 @@ tax-brackets:
    rate: 0.02 # Tax rate
 tax-account: true # Whether to use tax account
 tax-account-name: 'tax' # Tax account name
+tax-exempt:
+  enabled: true
+  global-permission: 'ecobalancer.exempt'
+  policy-permission-prefix: 'ecobalancer.exempt.policy'
+  operation-permission-prefix: 'ecobalancer.exempt.operation'
+debt-mode: 'skip' # skip, drain, allow-negative
+debt-commands:
+  - 'broadcast &e%player% &cdoes not have enough money to pay taxes.'
 file-logging: true # Write plugin logs under plugins/EcoBalancer/logs/latest.log
 require-confirmation: true # Require confirmation for destructive actions
 tax-exempt-permission: 'ecobalancer.exempt'
 max-deduction-per-player: 0 # 0 = unlimited
 min-balance-protection: 0 # 0 = disabled
+```
+
+## Tax Ledger and PlaceholderAPI
+
+EcoBalancer records actual tax collected into an internal ledger for `/eb tax fund`, `/eb tax stats [player]`, and tax reports. When PlaceholderAPI is installed, EcoBalancer registers the `ecobal` expansion:
+
+- `%ecobal_tax_fund_balance%`
+- `%ecobal_tax_total_collected%`
+- `%ecobal_tax_latest_collected%`
+- `%ecobal_tax_latest_operation%`
+- `%ecobal_player_latest_tax%`
+- `%ecobal_player_total_tax%`
+- `%ecobal_tax_next_run%`
+- `%ecobal_tax_active_policy%`
+- `%ecobal_tax_status%`
+- `%ecobal_gini%`
+- `%ecobal_top1_concentration%`
 
 ## Migration
 

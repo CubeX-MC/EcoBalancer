@@ -39,6 +39,9 @@ EcoBalancer 目前正在测试中。我们建议在部署前进行严格评估�
 - `/ecobal gui`：打开 GUI 仪表盘/策略菜单
 - `/ecobal migrate <check|run|backup>`：检查/执行迁移并创建备份
 - `/ecobal tax ...`：管理税收配置与策略执行
+- `/ecobal tax status`：查看当前征税任务进度
+- `/ecobal tax fund`：查看税款账本余额、累计征收和最近一次征税
+- `/ecobal tax stats [player]`：查看玩家最近缴税与累计缴税
 - `/ecobal policy <list|set|execute>`：转发到 tax 策略管理
 
 ### 经济分析命令
@@ -69,6 +72,8 @@ EcoBalancer 目前正在测试中。我们建议在部署前进行严格评估�
 - `ecobalancer.gui.admin`：GUI 策略管理与立即执行
 - `ecobalancer.admin`：管理员通知与迁移相关操作
 - `ecobalancer.exempt`：免税权限（由配置控制）
+- `ecobalancer.exempt.policy.<policy>`：对指定策略免税
+- `ecobalancer.exempt.operation.<operation>`：对指定执行类型免税，例如 `checkall`、`checkplayer`、`policy`
 
 ### 过滤参数（适用于 gini / concentration / health / stats / interval / perc / checkall 等分析类命令）
 
@@ -126,6 +131,14 @@ tax-brackets:
    rate: 0.02 # 税率
 tax-account: true # 是否使用税收账户
 tax-account-name: 'tax' # 税收账户名称
+tax-exempt:
+  enabled: true
+  global-permission: 'ecobalancer.exempt'
+  policy-permission-prefix: 'ecobalancer.exempt.policy'
+  operation-permission-prefix: 'ecobalancer.exempt.operation'
+debt-mode: 'skip' # skip=余额不足跳过, drain=最多扣到0, allow-negative=允许负数
+debt-commands:
+  - 'broadcast &e%player% &cdoes not have enough money to pay taxes.'
 only-offline-players: true
 stats-world: ''
 tax-filters: ''
@@ -136,6 +149,22 @@ tax-exempt-permission: 'ecobalancer.exempt'
 max-deduction-per-player: 0 # 单次最大扣款（0 = 不限制）
 min-balance-protection: 0 # 最低余额保护（0 = 关闭）
 ```
+
+## 税款账本与 PlaceholderAPI
+
+EcoBalancer 会把实际扣除的税款写入独立账本，用于 `/eb tax fund`、`/eb tax stats [player]` 和税收报告。若安装 PlaceholderAPI，插件会注册 `ecobal` expansion：
+
+- `%ecobal_tax_fund_balance%`
+- `%ecobal_tax_total_collected%`
+- `%ecobal_tax_latest_collected%`
+- `%ecobal_tax_latest_operation%`
+- `%ecobal_player_latest_tax%`
+- `%ecobal_player_total_tax%`
+- `%ecobal_tax_next_run%`
+- `%ecobal_tax_active_policy%`
+- `%ecobal_tax_status%`
+- `%ecobal_gini%`
+- `%ecobal_top1_concentration%`
 
 ## 迁移命令
 

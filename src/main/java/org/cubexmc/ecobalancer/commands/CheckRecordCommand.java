@@ -84,6 +84,8 @@ public class CheckRecordCommand implements TabExecutor {
         double oldBalance;
         double newBalance;
         double deduction;
+        String result;
+        String reason;
     }
 
     private void loadAndSendRecord(CommandSender sender, int operationId, String sortBy, int page) {
@@ -115,6 +117,8 @@ public class CheckRecordCommand implements TabExecutor {
                                     detail.oldBalance = allRecords.getDouble("old_balance");
                                     detail.newBalance = allRecords.getDouble("new_balance");
                                     detail.deduction = allRecords.getDouble("deduction");
+                                    detail.result = allRecords.getString("result");
+                                    detail.reason = allRecords.getString("reason");
                                     details.add(detail);
                                 }
                             }
@@ -144,6 +148,8 @@ public class CheckRecordCommand implements TabExecutor {
                                     detail.oldBalance = allRecords.getDouble("old_balance");
                                     detail.newBalance = allRecords.getDouble("new_balance");
                                     detail.deduction = allRecords.getDouble("deduction");
+                                    detail.result = allRecords.getString("result");
+                                    detail.reason = allRecords.getString("reason");
                                 }
                             }
                         }
@@ -172,6 +178,8 @@ public class CheckRecordCommand implements TabExecutor {
             detailPlaceholders.put("old_balance", String.format("%.2f", detail.oldBalance));
             detailPlaceholders.put("new_balance", String.format("%.2f", detail.newBalance));
             detailPlaceholders.put("deduction", String.format("%.2f", detail.deduction));
+            detailPlaceholders.put("result", detail.result == null ? "LEGACY" : detail.result);
+            detailPlaceholders.put("reason", detail.reason == null ? "" : detail.reason);
             sender.sendMessage(plugin.getFormattedMessage("messages.record_all_detail", detailPlaceholders));
         }
 
@@ -215,6 +223,8 @@ public class CheckRecordCommand implements TabExecutor {
         placeholders.put("old_balance", String.format("%.2f", detail.oldBalance));
         placeholders.put("new_balance", String.format("%.2f", detail.newBalance));
         placeholders.put("deduction", String.format("%.2f", detail.deduction));
+        placeholders.put("result", detail.result == null ? "LEGACY" : detail.result);
+        placeholders.put("reason", detail.reason == null ? "" : detail.reason);
 
         sender.sendMessage(plugin.getFormattedMessage("messages.record_player_header", placeholders));
         sender.sendMessage(plugin.getFormattedMessage("messages.record_player_detail", placeholders));

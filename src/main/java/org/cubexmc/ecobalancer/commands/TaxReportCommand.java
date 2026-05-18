@@ -177,8 +177,28 @@ public class TaxReportCommand implements CommandExecutor {
                 }
             }
 
+            int skippedCount = 0;
+            int exemptCount = 0;
+            int insufficientCount = 0;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT "
+                            + "SUM(CASE WHEN deduction <= 0 THEN 1 ELSE 0 END) AS skipped_count, "
+                            + "SUM(CASE WHEN result = 'EXEMPT' THEN 1 ELSE 0 END) AS exempt_count, "
+                            + "SUM(CASE WHEN result = 'INSUFFICIENT_BALANCE_SKIPPED' THEN 1 ELSE 0 END) AS insufficient_count "
+                            + "FROM records WHERE operation_id = ?")) {
+                ps.setInt(1, operationId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        skippedCount = rs.getInt("skipped_count");
+                        exemptCount = rs.getInt("exempt_count");
+                        insufficientCount = rs.getInt("insufficient_count");
+                    }
+                }
+            }
+
             return new TaxReportData(operationId, timestamp, isCheckAll, playerCount, 
-                                    totalTax, avgOldBalance, avgNewBalance, brackets);
+                                    totalTax, avgOldBalance, avgNewBalance, brackets, skippedCount, exemptCount,
+                                    insufficientCount);
 
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to query report data: " + e.getMessage());
@@ -198,6 +218,9 @@ public class TaxReportCommand implements CommandExecutor {
         placeholders.put("total_tax", EconomicMetrics.formatLargeNumber(data.totalTax));
         placeholders.put("avg_old_balance", EconomicMetrics.formatLargeNumber(data.avgOldBalance));
         placeholders.put("avg_new_balance", EconomicMetrics.formatLargeNumber(data.avgNewBalance));
+        placeholders.put("skipped_count", String.valueOf(data.skippedCount));
+        placeholders.put("exempt_count", String.valueOf(data.exemptCount));
+        placeholders.put("insufficient_count", String.valueOf(data.insufficientCount));
         
         double avgTaxRate = data.avgOldBalance > 0 ? (data.totalTax / (data.avgOldBalance * data.playerCount)) * 100 : 0;
         placeholders.put("avg_tax_rate", String.format("%.2f%%", avgTaxRate));
@@ -242,10 +265,13 @@ public class TaxReportCommand implements CommandExecutor {
         final double avgOldBalance;
         final double avgNewBalance;
         final List<TaxBracketInfo> brackets;
+        final int skippedCount;
+        final int exemptCount;
+        final int insufficientCount;
 
         TaxReportData(int operationId, long timestamp, boolean isCheckAll, int playerCount,
                      double totalTax, double avgOldBalance, double avgNewBalance,
-                     List<TaxBracketInfo> brackets) {
+                     List<TaxBracketInfo> brackets, int skippedCount, int exemptCount, int insufficientCount) {
             this.operationId = operationId;
             this.timestamp = timestamp;
             this.isCheckAll = isCheckAll;
@@ -254,6 +280,9 @@ public class TaxReportCommand implements CommandExecutor {
             this.avgOldBalance = avgOldBalance;
             this.avgNewBalance = avgNewBalance;
             this.brackets = brackets;
+            this.skippedCount = skippedCount;
+            this.exemptCount = exemptCount;
+            this.insufficientCount = insufficientCount;
         }
     }
 

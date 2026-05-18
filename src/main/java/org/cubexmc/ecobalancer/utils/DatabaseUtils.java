@@ -58,11 +58,18 @@ public class DatabaseUtils {
                 
                 // 创建records表（保持兼容：若已存在则不变；新安装包含外键约束）
                 statement.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, player_name TEXT NOT NULL, player TEXT NOT NULL, old_balance REAL NOT NULL, new_balance REAL NOT NULL, deduction REAL NOT NULL, timestamp INTEGER NOT NULL, is_checkall BOOLEAN NOT NULL, operation_id INTEGER NOT NULL, FOREIGN KEY(operation_id) REFERENCES operations(id) ON DELETE CASCADE)");
+                addColumnIfMissing(connection, "records", "policy_name", "TEXT");
+                addColumnIfMissing(connection, "records", "operation_type", "TEXT");
+                addColumnIfMissing(connection, "records", "result", "TEXT");
+                addColumnIfMissing(connection, "records", "reason", "TEXT");
+                addColumnIfMissing(connection, "records", "requested_deduction", "REAL");
+                addColumnIfMissing(connection, "records", "actual_deduction", "REAL");
 
                 // 索引优化
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_records_operation_id ON records(operation_id)");
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_records_timestamp ON records(timestamp)");
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_records_player ON records(player)");
+                statement.execute("CREATE INDEX IF NOT EXISTS idx_records_result ON records(result)");
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_operations_timestamp ON operations(timestamp)");
 
                 // 创建经济快照表（用于趋势分析）
@@ -104,9 +111,54 @@ public class DatabaseUtils {
                         "players_affected INTEGER, " +
                         "timestamp INTEGER NOT NULL" +
                         ")");
+
+                statement.execute("CREATE TABLE IF NOT EXISTS tax_ledger (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                        "operation_id INTEGER, " +
+                        "player_uuid TEXT, " +
+                        "player_name TEXT, " +
+                        "policy_name TEXT, " +
+                        "amount REAL NOT NULL, " +
+                        "balance_before REAL, " +
+                        "balance_after REAL, " +
+                        "result TEXT, " +
+                        "timestamp INTEGER NOT NULL" +
+                        ")");
+                statement.execute("CREATE INDEX IF NOT EXISTS idx_tax_ledger_operation ON tax_ledger(operation_id)");
+                statement.execute("CREATE INDEX IF NOT EXISTS idx_tax_ledger_player ON tax_ledger(player_uuid)");
+
+                statement.execute("CREATE TABLE IF NOT EXISTS player_tax_totals (" +
+                        "player_uuid TEXT PRIMARY KEY, " +
+                        "player_name TEXT, " +
+                        "latest_tax_paid REAL NOT NULL DEFAULT 0, " +
+                        "total_tax_paid REAL NOT NULL DEFAULT 0, " +
+                        "latest_tax_time INTEGER" +
+                        ")");
+
+                statement.execute("CREATE TABLE IF NOT EXISTS server_tax_stats (" +
+                        "id INTEGER PRIMARY KEY CHECK (id = 1), " +
+                        "total_tax_collected REAL NOT NULL DEFAULT 0, " +
+                        "tax_fund_balance REAL NOT NULL DEFAULT 0, " +
+                        "latest_tax_collected REAL NOT NULL DEFAULT 0, " +
+                        "latest_operation_id INTEGER, " +
+                        "updated_at INTEGER" +
+                        ")");
+                statement.execute("INSERT OR IGNORE INTO server_tax_stats (id, total_tax_collected, tax_fund_balance, latest_tax_collected, latest_operation_id, updated_at) VALUES (1, 0, 0, 0, -1, 0)");
             }
         } catch (SQLException e) {
             logger.severe("初始化数据库表失败: " + e.getMessage());
+        }
+    }
+
+    private static void addColumnIfMissing(Connection connection, String table, String column, String definition) {
+        try (Statement s = connection.createStatement()) {
+            s.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
+        } catch (SQLException e) {
+            String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase(java.util.Locale.ROOT);
+            if (!msg.contains("duplicate column")) {
+                // Best effort for compatibility with old SQLite files; table creation still
+                // leaves new installs with the full schema through subsequent statements.
+            }
         }
     }
 
@@ -122,10 +174,17 @@ public class DatabaseUtils {
      * @param logger 日志器
      */
     public static void saveRecord(Plugin plugin, OfflinePlayer player, double oldBalance, double newBalance, double deduction, boolean isCheckAll, int operationId, Logger logger) {
+        saveRecord(plugin, player, oldBalance, newBalance, deduction, isCheckAll, operationId, null, null, null, null,
+                deduction, deduction, logger);
+    }
+
+    public static void saveRecord(Plugin plugin, OfflinePlayer player, double oldBalance, double newBalance,
+            double deduction, boolean isCheckAll, int operationId, String policyName, String operationType,
+            String result, String reason, double requestedDeduction, double actualDeduction, Logger logger) {
         runSqlWithRetry(logger, () -> {
             try (Connection connection = getConnection(plugin);
                  PreparedStatement preparedStatement = connection.prepareStatement(
-                        "INSERT INTO records (player_name, player, old_balance, new_balance, deduction, timestamp, is_checkall, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                        "INSERT INTO records (player_name, player, old_balance, new_balance, deduction, timestamp, is_checkall, operation_id, policy_name, operation_type, result, reason, requested_deduction, actual_deduction) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 preparedStatement.setString(1, player.getName());
                 preparedStatement.setString(2, player.getUniqueId().toString());
                 preparedStatement.setDouble(3, oldBalance);
@@ -134,6 +193,12 @@ public class DatabaseUtils {
                 preparedStatement.setLong(6, System.currentTimeMillis());
                 preparedStatement.setBoolean(7, isCheckAll);
                 preparedStatement.setInt(8, operationId);
+                preparedStatement.setString(9, policyName);
+                preparedStatement.setString(10, operationType);
+                preparedStatement.setString(11, result);
+                preparedStatement.setString(12, reason);
+                preparedStatement.setDouble(13, requestedDeduction);
+                preparedStatement.setDouble(14, actualDeduction);
                 preparedStatement.executeUpdate();
             }
         });

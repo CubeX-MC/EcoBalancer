@@ -26,13 +26,14 @@ public class MessageUtils {
      * @return 格式化后的消息
      */
     public static String formatMessage(FileConfiguration config, String path, Map<String, String> placeholders, String prefix) {
-        if (placeholders == null) {
-            placeholders = new HashMap<>();
+        Map<String, String> map = new HashMap<>();
+        if (placeholders != null) {
+            map.putAll(placeholders);
         }
-        placeholders.put("prefix", prefix);
+        map.put("prefix", prefix);
         
         String message = config.getString(path, "Message not found!");
-        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+        for (Map.Entry<String, String> entry : map.entrySet()) {
             String value = entry.getValue() == null ? "" : entry.getValue();
             message = message.replace("%" + entry.getKey() + "%", value);
         }
@@ -52,15 +53,16 @@ public class MessageUtils {
      */
     public static TextComponent formatComponent(FileConfiguration config, String path, Map<String, String> placeholders, 
                                                 String[] clickablePlaceholders, TextComponent[] clickableComponents, String prefix) {
-        if (placeholders == null) {
-            placeholders = new HashMap<>();
+        Map<String, String> map = new HashMap<>();
+        if (placeholders != null) {
+            map.putAll(placeholders);
         }
-        placeholders.put("prefix", prefix);
+        map.put("prefix", prefix);
         
         String message = config.getString(path, "Message not found!");
         
         // 处理占位符
-        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+        for (Map.Entry<String, String> entry : map.entrySet()) {
             if (clickablePlaceholders != null) {
                 boolean isClickable = false;
                 for (String clickable : clickablePlaceholders) {

@@ -1,4 +1,4 @@
-lang-version: 2
+lang-version: 3
 prefix: '&7[&6EcoBalancer&7]&r'
 messages:
   # reload
@@ -21,11 +21,11 @@ messages:
     impact: '&f/ecobal impact [operation_id] &6- Tax impact analysis'
     trends: '&f/ecobal trends [days] &6- Economy trends report'
     tax: '&f/ecobal tax &6- Manage tax configuration'
-    policy: '&f/ecobal policy <list|set|execute> &6- Manage policies via tax command'
+    policy: '&f/ecobal tax policy <list|create|set|execute> &6- Manage policies via tax command'
     migrate: '&f/ecobal migrate &6- Manage configuration migration'
     gui: '&f/ecobal gui &6- Open EcoBalancer GUI'
     reload: '&f/ecobal reload &6- Reload configuration file'
-  help_footer: '&7&oFrom &c&lCube&f&lX&7&o ruling class toolkit'
+  help_footer: ''
   help_header: '&e&lEcoBalancer &fHelp:'
   prev_page: "&6Previous Page"
   next_page: "&6Next Page"
@@ -65,11 +65,11 @@ messages:
   record_usage: "&6Usage: &f/checkrecord <operation ID> [page]"
   record_invalid_id: "&cInvalid operation ID!"
   record_all_header: "&6Details of operation &4%operation_id% &6(server-wide check):"
-  record_all_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction%"
+  record_all_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction% &8(%result%: %reason%)"
   record_page: "%prev% &fPage &4%page%&f, total &4%total% &fpages %next%"
   record_footer: "&7&oUse /checkrecord <operation_id> [alphabet|deduction] [page] to view more."
   record_player_header: "&aDetails of operation %operation_id% (player check):"
-  record_player_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction%"
+  record_player_detail: "&f[&4%player%&f] &c%old_balance%&f→&a%new_balance% &7%deduction% &8(%result%: %reason%)"
   record_operation_not_found: "&cOperation not found!"
   record_not_found: "&cRecord not found!"
   record_error: "&cAn error occurred: %error%"
@@ -193,7 +193,7 @@ messages:
     no_operations: "&cNo operation records found!"
     not_found: "&cOperation #%operation_id% not found!"
     header: "&e&l━━━━━━━ Tax Report #%operation_id% ━━━━━━━\n&7Type: &f%operation_type% &7| Time: &f%timestamp%"
-    summary: "&6Total Tax Collected: &e%total_tax%\n&6Players Affected: &f%player_count% &7players\n&6Average Tax Rate: &e%avg_tax_rate%\n&6Avg Balance Before: &f%avg_old_balance%\n&6Avg Balance After: &f%avg_new_balance%"
+    summary: "&6Total Tax Collected: &e%total_tax%\n&6Players Affected: &f%player_count% &7players\n&6Skipped/Exempt: &f%skipped_count% &7skipped, &f%exempt_count% &7exempt, &f%insufficient_count% &7insufficient\n&6Average Tax Rate: &e%avg_tax_rate%\n&6Avg Balance Before: &f%avg_old_balance%\n&6Avg Balance After: &f%avg_new_balance%"
     brackets_header: "&eTax Bracket Distribution:"
     bracket_line: "&7• &f%tax_rate% &7rate: &6%player_count% &7players | Total: &e%total_tax% &7(%percentage%)"
     error: "&cError generating tax report!"
@@ -260,7 +260,7 @@ messages:
 
   # tax
   tax:
-    usage: "&fUsage: /eb tax <show|schedule|time|days|dates|inactive|clear|bracket|mode|filter|account|save|reset>"
+    usage: "&fUsage: /eb tax <show|schedule|time|days|dates|inactive|clear|bracket|mode|debt|filter|account|status|fund|stats|save|reload>"
     show_header: "&e&l━━━━━━━ Current Tax Configuration ━━━━━━━"
     schedule_line: "&7Schedule: &f%type% &7at &f%time%"
     days_of_week_line: "&7Days of Week: &f%days%"
@@ -270,6 +270,8 @@ messages:
     mode_line: "&7Threshold Mode: &f%mode%"
     filter_line: "&7Default Filter: &f%filter%"
     account_line: "&7Tax Account: %status% &7(&f%name%&7)"
+    debt_line: "&7Debt Mode: &f%mode% &7(global: &f%global%&7)"
+    exempt_line: "&7Policy Exempt Permission: &f%permission%"
     brackets_header: "&7Tax Brackets:"
     bracket_line: "  &7• &f%threshold% &7→ &e%rate%"
     
@@ -280,6 +282,7 @@ messages:
     set_inactive_deduct: "&aInactive days to deduct set to &f%days%"
     set_inactive_clear: "&aInactive days to clear set to &f%days%"
     set_mode: "&aThreshold mode set to &f%mode%"
+    set_debt_mode: "&aDebt mode set to &f%mode%"
     set_filter: "&aDefault tax filter set to &f%filter%"
     bracket_added: "&aTax bracket added: &f%threshold% &7→ &e%rate%"
     bracket_removed: "&aTax bracket removed: &f%threshold%"
@@ -287,6 +290,15 @@ messages:
     account_enabled: "&aTax account enabled"
     account_disabled: "&cTax account disabled"
     account_name_set: "&aTax account name set to &f%name%"
+    run_busy: "&cA tax run is already running: operation #%operation_id%, policy %policy%, %processed%/%total% processed."
+    status_idle: "&aNo tax run is currently running."
+    status_running: "&eTax run #%operation_id% &7policy &f%policy% &7trigger &f%trigger% &7by &f%sender%\n&7Progress: &f%processed%/%total% &7Affected: &f%affected% &7Deducted: &e%deducted%"
+    fund_loading: "&7Loading tax fund..."
+    fund_summary: "&e&lTax Fund\n&7Ledger Balance: &e%balance%\n&7Total Collected: &e%total%\n&7Latest Tax: &e%latest% &7(operation #%operation_id%)\n&7Vault Tax Account Balance: &f%vault_balance%"
+    stats_loading: "&7Loading tax stats..."
+    stats_summary: "&e&lTax Stats: &f%player%\n&7Latest Paid: &e%latest% &7at &f%time%\n&7Total Paid: &e%total%"
+    insufficient_balance_skipped: "&6Player &4%player% &6does not have enough money to pay &e%deduction%&6; skipped by debt mode."
+    zero_deduction: "&6Player &4%player% &6has no tax due."
     saved: "&aConfiguration saved to config.yml"
     reset: "&eConfiguration reset from config.yml"
     
@@ -298,11 +310,24 @@ messages:
     error_bracket_not_found: "&cNo bracket found with threshold %threshold%"
     error_no_changes: "&eNo changes to save"
     reload_policies: "&aReloaded all policies from disk."
-    policy_usage: "&6/eb tax policy <list|set|execute> &7- Manage tax policies"
+    policy_usage: "&6/eb tax policy <list|set|execute|create|delete|clone|info|edit> &7- Manage tax policies"
     policy_list_header: "&6Loaded Policies:"
     policy_item_active: " &a➤ %name% &7(Active)"
     policy_item_inactive: " &7- %name%"
     policy_set_usage: "&cUsage: /eb tax policy set <name>"
+    policy_create_usage: "&cUsage: /eb tax policy create <name>"
+    policy_create_success: "&aCreated new policy: %name%"
+    policy_already_exists: "&cPolicy %name% already exists!"
+    policy_delete_usage: "&cUsage: /eb tax policy delete <name>"
+    policy_delete_success: "&aDeleted policy: %name%"
+    policy_clone_usage: "&cUsage: /eb tax policy clone <source> <target>"
+    policy_clone_success: "&aCloned policy %source% to %target%"
+    policy_clone_failed: "&cFailed to clone policy! Make sure source exists and target does not."
+    policy_rename_usage: "&cUsage: /eb tax policy rename <old> <new>"
+    policy_rename_success: "&aRenamed policy %old% to %new%"
+    policy_rename_failed: "&cFailed to rename policy! Make sure old exists and new does not."
+    policy_info_usage: "&cUsage: /eb tax policy info <name>"
+    policy_edit_usage: "&cUsage: /eb tax policy edit <name> <property> [args...]"
     policy_set_success: "&aActive policy set to: %name%"
     policy_execute_usage: "&cUsage: /eb tax policy execute <name>"
     policy_execute_hint: "&7Executes the specified policy immediately without changing the active policy."
@@ -325,6 +350,7 @@ messages:
     bracket_add_example: "&7Example: /eb tax bracket add 100000 0.01"
     bracket_remove_usage: "&cUsage: /eb tax bracket remove <threshold>"
     mode_usage: "&cUsage: /eb tax mode <absolute|percentile>"
+    debt_usage: "&cUsage: /eb tax debt <inherit|skip|drain|allow-negative>"
     account_usage: "&cUsage: /eb tax account <enable|disable|name>"
     error_days_positive: "&cDays must be a positive number"
     error_invalid_number: "&cInvalid number"
@@ -332,6 +358,7 @@ messages:
     error_invalid_number_format: "&cInvalid number format"
     error_invalid_threshold_format: "&cInvalid threshold format"
     error_invalid_mode: "&cInvalid mode."
+    error_invalid_debt_mode: "&cInvalid debt mode. Use inherit, skip, drain, or allow-negative."
     error_save_failed: "&cFailed to save configuration: %error%"
 
   # migration
@@ -364,3 +391,46 @@ messages:
     no_active_policy: "&cNo active policy to execute!"
     policies_reloaded: "&aPolicies reloaded."
     executing_policy: "&eExecuting policy: &6%name%"
+    pd_toggle_schedule_type: "&eToggle Schedule Type"
+    pd_schedule_type: "&7Type: &f"
+    pd_edit_days: "&eEdit Days of Week"
+    pd_days_list: "&7Days: &f"
+    pd_edit_dates: "&eEdit Dates of Month"
+    pd_dates_list: "&7Dates: &f"
+    prompt_edit_days: "Enter days of week (1-7 separated by spaces, 1=Sun, 7=Sat):"
+    msg_days_updated: "&aDays updated."
+    msg_invalid_days: "&cNo valid days provided."
+    prompt_edit_dates: "Enter dates of month (1-31 separated by spaces):"
+    msg_dates_updated: "&aDates updated."
+    msg_invalid_dates: "&cNo valid dates provided."
+    pd_desc_schedule_type: "&7Select daily, weekly, or monthly execution."
+    pd_desc_time: "&7The exact time of day to trigger the policy."
+    pd_desc_days: "&7Which days of the week to run the policy."
+    pd_desc_dates: "&7Which dates of the month to run the policy."
+    pd_desc_routine_1: "&7Auto: Runs automatically at the scheduled time."
+    pd_desc_routine_2: "&7Manual: Only runs when executed by an admin."
+    pd_desc_max_deduction_1: "&7The maximum amount of money to deduct"
+    pd_desc_max_deduction_2: "&7from a player in a single execution."
+    pd_desc_max_deduction_3: "&7Set to 0 to disable the limit."
+    pd_desc_min_protection_1: "&7Players with balance below this value"
+    pd_desc_min_protection_2: "&7will not be taxed (poor protection)."
+    pd_desc_min_protection_3: "&7Set to 0 to disable."
+    pd_desc_offline_1: "&7Yes: Only taxes offline/AFK players."
+    pd_desc_offline_2: "&7No: Taxes everyone including online players."
+    pd_desc_percentile_1: "&7Yes: Thresholds use wealth percentile (e.g. top 10%)."
+    pd_desc_percentile_2: "&7No: Thresholds use absolute balance (e.g. 100k)."
+    pd_desc_inactive_deduct_1: "&7Start deducting tax only if the player"
+    pd_desc_inactive_deduct_2: "&7has been offline for this many days."
+    pd_desc_inactive_deduct_3: "&7Set to 0 to disable."
+    pd_desc_inactive_clear_1: "&7Clear the player's entire balance if they"
+    pd_desc_inactive_clear_2: "&7have been offline for this many days."
+    pd_desc_inactive_clear_3: "&7Set to 0 to disable."
+    prompt_max_deduction: "Enter Max Deduction Per Player (e.g. 50000, 0 to disable):"
+    prompt_min_protection: "Enter Min Balance Protection (e.g. 10000, 0 to disable):"
+    prompt_inactive_deduct: "Enter Inactive Days To Deduct (e.g. 7, 0 to disable):"
+    prompt_inactive_clear: "Enter Inactive Days To Clear (e.g. 30, 0 to disable):"
+    pd_rename: "&eRename Policy"
+    pd_rename_lore: "&7Change the name of this policy"
+    prompt_rename_policy: "Enter new name for this policy:"
+    msg_invalid_name: "&cInvalid name."
+    msg_policy_renamed: "&aPolicy renamed to "

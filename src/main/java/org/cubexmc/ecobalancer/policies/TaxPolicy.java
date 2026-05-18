@@ -34,6 +34,10 @@ public class TaxPolicy {
     // Composite policies (list of other policy names to aggregate)
     private List<String> composition = new ArrayList<>();
 
+    // Optional safety controls. Empty exemptPermission means use global defaults.
+    private String exemptPermission = "";
+    private String debtMode = "inherit";
+
     // Constructor
     public TaxPolicy(String name) {
         this.name = name;
@@ -249,6 +253,22 @@ public class TaxPolicy {
 
     public void setComposition(List<String> composition) {
         this.composition = composition;
+    }
+
+    public String getExemptPermission() {
+        return exemptPermission;
+    }
+
+    public void setExemptPermission(String exemptPermission) {
+        this.exemptPermission = exemptPermission == null ? "" : exemptPermission;
+    }
+
+    public String getDebtMode() {
+        return debtMode;
+    }
+
+    public void setDebtMode(String debtMode) {
+        this.debtMode = debtMode == null ? "inherit" : debtMode;
     }
 
     @Override
