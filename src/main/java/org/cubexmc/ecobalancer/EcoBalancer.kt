@@ -17,6 +17,7 @@ import org.bukkit.plugin.RegisteredServiceProvider
 import org.cubexmc.config.MigrationException
 import org.cubexmc.config.ResourceFiles
 import org.cubexmc.core.CubexPlugin
+import org.cubexmc.economy.VaultEconomy
 import org.cubexmc.ecobalancer.commands.EcoTabCompleter
 import org.cubexmc.ecobalancer.commands.UtilCommand
 import org.cubexmc.ecobalancer.gui.GuiManager
@@ -32,6 +33,7 @@ import org.cubexmc.ecobalancer.tax.TaxDecisionResult
 import org.cubexmc.ecobalancer.tax.TaxLedgerService
 import org.cubexmc.ecobalancer.tax.TaxOperationType
 import org.cubexmc.ecobalancer.tax.TaxRunService
+import org.cubexmc.ecobalancer.tax.TaxTreasury
 import org.cubexmc.ecobalancer.utils.AnalysisFilters
 import org.cubexmc.ecobalancer.utils.ConfigMigrator
 import org.cubexmc.ecobalancer.utils.DatabaseUtils
@@ -88,6 +90,12 @@ class EcoBalancer : CubexPlugin() {
     var nextScheduledRunMillis: Long = 0
         private set
 
+    /**
+     * 税款的收取与去处（`cubex-economy`）。Vault 缺席时插件根本不会 enable，
+     * 所以这里只有 enable 失败路径上才是 null。
+     */
+    private var treasury: TaxTreasury? = null
+
     override fun enablePlugin() {
         if (!setupEconomy()) {
             abortEnable(String.format("[%s] - Disabled due to no Vault dependency found!", description.name))
@@ -105,6 +113,11 @@ class EcoBalancer : CubexPlugin() {
         } catch (throwable: Throwable) {
             logger.log(Level.WARNING, "VaultUtils setup failed; continuing with core economy provider", throwable)
         }
+
+        // 上面的 setupEconomy() 已经拦过"没 Vault / 没提供方"；这里再为 null 只能是两句之间被拔了服务。
+        val vaultEconomy = VaultEconomy.hook(this, log())
+            ?: return abortEnable("EcoBalancer could not wrap the Vault economy provider; refusing to collect taxes blind.")
+        treasury = TaxTreasury(vaultEconomy)
 
         val resources = ResourceFiles(this)
         resources.saveIfMissing(Arrays.asList("config.yml", "lang/zh_CN.yml", "lang/en_US.yml"))
@@ -154,6 +167,8 @@ class EcoBalancer : CubexPlugin() {
         if (isTaxAccountEnabled && economy != null && accountName != null && !economy.hasAccount(accountName)) {
             economy.createPlayerAccount(accountName)
         }
+        // 先建账户再解析,否则启动日志会报"经济插件不认识这个账户"。
+        applyTaxAccount()
 
         server.pluginManager.registerEvents(AdminLoginListener(this), this)
         if (server.pluginManager.getPlugin("PlaceholderAPI") != null) {
@@ -252,6 +267,7 @@ class EcoBalancer : CubexPlugin() {
         scheduleDailySnapshot()
         isTaxAccountEnabled = config.getBoolean("tax-account", true)
         taxAccountName = if (isTaxAccountEnabled) config.getString("tax-account-name", "tax") else null
+        applyTaxAccount()
     }
 
     private fun loadLangFile() {
@@ -438,6 +454,32 @@ class EcoBalancer : CubexPlugin() {
         recordDecision(player, decision, isCheckAll, context)
     }
 
+    /**
+     * 收一笔税：从玩家身上扣走并转进税金账户。
+     *
+     * 扣款失败与"扣到了但没入账"各记一条日志 —— 接入 `cubex-economy` 之前
+     * 这两种失败都是**静默**的，服主无从发现账本与真实余额对不上。
+     */
+    private fun collectTax(player: OfflinePlayer, amount: Double): TaxTreasury.Outcome {
+        val current = treasury
+            ?: return TaxTreasury.Outcome(collected = false, banked = false, reason = "economy is not initialized")
+        val outcome = current.collect(player, amount)
+        val who = player.name ?: player.uniqueId.toString()
+        if (!outcome.collected) {
+            logger.warning("Failed to collect ${current.format(amount)} of tax from $who: ${outcome.reason}")
+        } else if (!outcome.banked) {
+            logger.warning(
+                "Collected ${current.format(amount)} of tax from $who but it did not reach " +
+                    "${current.accountDescription()}: ${outcome.reason}",
+            )
+        }
+        return outcome
+    }
+
+    /** 把钱退回给玩家（负余额修复）。 */
+    private fun repay(player: OfflinePlayer, amount: Double): Boolean =
+        treasury?.repay(player, amount) ?: false
+
     private fun sendMessage(sender: CommandSender?, path: String, placeholders: Map<String, String>?, isLog: Boolean) {
         val message = getFormattedMessage(path, placeholders)
         if (sender != null) {
@@ -519,7 +561,12 @@ class EcoBalancer : CubexPlugin() {
         }
 
         if (oldBalance < 0.0) {
-            economy.depositPlayer(player, -1 * oldBalance)
+            if (!repay(player, -1 * oldBalance)) {
+                logger.warning(
+                    "Could not clear ${player.name ?: player.uniqueId}'s negative balance of " +
+                        "${String.format("%.2f", oldBalance)}; the economy provider refused the deposit.",
+                )
+            }
             val newBalance = economy.getBalance(player)
             placeholders["new_balance"] = String.format("%.2f", newBalance)
             sendMessage(sender, "messages.negative_balance", placeholders, log)
@@ -537,11 +584,15 @@ class EcoBalancer : CubexPlugin() {
 
         if (timeCheck && daysToClear > 0 && daysOffline > daysToClear) {
             val actual = oldBalance
-            economy.withdrawPlayer(player, actual)
-            val accountName = taxAccountName
-            if (isTaxAccountEnabled && accountName != null) economy.depositPlayer(accountName, actual)
+            val outcome = collectTax(player, actual)
             val newBalance = economy.getBalance(player)
             placeholders["new_balance"] = String.format("%.2f", newBalance)
+            if (!outcome.collected) {
+                // 没扣到钱就不该报"已清零",也不该进账本。
+                placeholders["deduction"] = String.format("%.2f", actual)
+                sendMessage(sender, "messages.tax.economy_failed", placeholders, log)
+                return TaxDecision(oldBalance, actual, 0.0, newBalance, TaxDecisionResult.ECONOMY_FAILED, "economy_withdraw_failed")
+            }
             sendMessage(sender, "messages.offline_extreme", placeholders, log)
             return TaxDecision(oldBalance, actual, actual, newBalance, TaxDecisionResult.CLEARED, "inactive_clear")
         }
@@ -557,6 +608,8 @@ class EcoBalancer : CubexPlugin() {
         when (decision.result) {
             TaxDecisionResult.INSUFFICIENT_BALANCE_SKIPPED -> sendMessage(sender, "messages.tax.insufficient_balance_skipped", placeholders, log)
             TaxDecisionResult.ZERO_DEDUCTION -> sendMessage(sender, "messages.tax.zero_deduction", placeholders, log)
+            // 不能落进下面的 else —— 那会对着一笔没收到的税报"已扣除"。
+            TaxDecisionResult.ECONOMY_FAILED -> sendMessage(sender, "messages.tax.economy_failed", placeholders, log)
             else -> {
                 if (timeCheck) sendMessage(sender, "messages.offline_moderate", placeholders, log)
                 else sendMessage(sender, "messages.deduction_made", placeholders, log)
@@ -591,10 +644,17 @@ class EcoBalancer : CubexPlugin() {
             }
         }
 
-        if (actualDeduction > 0) {
-            economy.withdrawPlayer(player, actualDeduction)
-            val accountName = taxAccountName
-            if (isTaxAccountEnabled && accountName != null) economy.depositPlayer(accountName, actualDeduction)
+        if (actualDeduction > 0 && !collectTax(player, actualDeduction).collected) {
+            // 扣款被拒:这一笔记 0,因此不进账本(recordTax 只收 > 0 的金额)。
+            val newBalance = economy.getBalance(player)
+            return TaxDecision(
+                oldBalance,
+                requestedDeduction,
+                0.0,
+                newBalance,
+                TaxDecisionResult.ECONOMY_FAILED,
+                "economy_withdraw_failed",
+            )
         }
         val newBalance = economy.getBalance(player)
         val ledgerDecision = TaxDecision(oldBalance, requestedDeduction, actualDeduction, newBalance, result, reason)
@@ -1256,7 +1316,26 @@ class EcoBalancer : CubexPlugin() {
         config.set("tax-account", isTaxAccountEnabled)
         config.set("tax-account-name", taxAccountName)
         saveConfig()
+        // `/ecobal tax account enable|disable|name` 都经过这里:改完立刻生效,不等下一次 reload。
+        applyTaxAccount()
         logger.info("Configuration saved to config.yml")
+    }
+
+    /**
+     * 把 `tax-account` / `tax-account-name` 翻译成模块的入账目标。
+     *
+     * enable、reload 与 `/ecobal tax account ...` 各调一次 —— 解析要问一次经济插件,
+     * 不能落进按玩家循环的扣税路径。账户名非法时降级成"不入账"并记 SEVERE:
+     * 猜一个账户往里转钱比不入账更糟。
+     */
+    private fun applyTaxAccount() {
+        val current = treasury ?: return
+        if (!current.useAccount(isTaxAccountEnabled, taxAccountName)) {
+            logger.severe(
+                "tax-account-name '$taxAccountName' is not a usable account name; " +
+                    "collected tax will be destroyed until it is fixed.",
+            )
+        }
     }
 
     companion object {

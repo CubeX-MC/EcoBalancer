@@ -1,4 +1,4 @@
-lang-version: 4
+lang-version: 5
 prefix: '<gray>[<gold>EcoBalancer<gray>]<reset>'
 messages:
   # reload
@@ -302,6 +302,7 @@ messages:
     stats_summary: "<yellow><bold>缴税统计: <white><player>\\n<gray>最近缴税: <yellow><latest> <gray>时间 <white><time>\\n<gray>累计缴税: <yellow><total>"
     insufficient_balance_skipped: "<gold>玩家 <dark_red><player> <gold>余额不足，无法支付 <yellow><deduction><gold>；已按欠款模式跳过。"
     zero_deduction: "<gold>玩家 <dark_red><player> <gold>本次无需缴税。"
+    economy_failed: "<red>未能向 <dark_red><player><red> 收取 <yellow><deduction><red> 的税款：经济插件拒绝了这笔交易，本次未记账。"
     run_failed: "<red>征税任务 #<operation_id> 执行失败，运行锁已释放。错误: <error>"
     saved: "<green>配置已保存到 config.yml"
     reset: "<yellow>配置已从 config.yml 重新加载"

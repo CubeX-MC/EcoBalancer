@@ -100,10 +100,21 @@ class RestoreCommand(private val plugin: EcoBalancer) : CommandExecutor {
                                                     val uid = entries[j].key
                                                     val deduction = entries[j].value
                                                     val offlinePlayer = Bukkit.getOfflinePlayer(uid)
-                                                    if (deduction > 0) {
+                                                    if (deduction == 0.0) continue
+                                                    // 退回（或重新扣回）一笔征税。返回值必须看：
+                                                    // 不看的话，部分玩家没拿到退款，而命令依旧报"已恢复"。
+                                                    val restored = if (deduction > 0) {
                                                         EcoBalancer.getEconomy().depositPlayer(offlinePlayer, deduction)
-                                                    } else if (deduction < 0) {
+                                                    } else {
                                                         EcoBalancer.getEconomy().withdrawPlayer(offlinePlayer, -deduction)
+                                                    }
+                                                    if (restored?.transactionSuccess() != true) {
+                                                        plugin.logger.warning(
+                                                            "Restore of operation $opId could not move " +
+                                                                String.format("%.2f", deduction) +
+                                                                " for ${offlinePlayer.name ?: uid}: " +
+                                                                (restored?.errorMessage ?: "the economy provider returned no response"),
+                                                        )
                                                     }
                                                 }
                                             },

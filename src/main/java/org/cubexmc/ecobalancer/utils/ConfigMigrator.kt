@@ -111,6 +111,7 @@ class ConfigMigrator(private val plugin: EcoBalancer) {
             .addStep(ModernizeLanguageStep(1, resourcePath))
             .addStep(ModernizeLanguageStep(2, resourcePath))
             .addStep(ModernizeLanguageStep(3, resourcePath))
+            .addStep(MergeLanguageDefaultsStep(LEGACY_MINIMESSAGE_LANG_VERSION, resourcePath))
     }
 
     private inner class LegacyConfigMigrationStep(private val fromVersionValue: Int) : MigrationStep {
@@ -128,6 +129,32 @@ class ConfigMigrator(private val plugin: EcoBalancer) {
                 return
             }
             applyLegacyConfigMigration(context.yaml(), defaults, fromVersionValue)
+        }
+    }
+
+    /**
+     * v4 -> v5：只把新增的默认键合进来。
+     *
+     * 故意**不**复用 [ModernizeLanguageStep]：v4 的文件已经是 MiniMessage，
+     * 再跑一遍 legacy 转换只会去动服主改过的文案（比如正文里真的写了 `&`）。
+     */
+    private inner class MergeLanguageDefaultsStep(
+        private val fromVersionValue: Int,
+        private val resourcePath: String,
+    ) : MigrationStep {
+        override fun fromVersion(): Int = fromVersionValue
+
+        override fun toVersion(): Int = CURRENT_LANG_VERSION
+
+        override fun description(): String = "Merge language keys added in v$CURRENT_LANG_VERSION."
+
+        override fun migrate(context: MigrationContext) {
+            val defaults = loadDefaultResource(resourcePath)
+            if (defaults == null) {
+                context.fail(resourcePath, "Could not load bundled MiniMessage defaults.")
+                return
+            }
+            mergeNewKeys(context.yaml(), defaults, "")
         }
     }
 
@@ -452,10 +479,13 @@ class ConfigMigrator(private val plugin: EcoBalancer) {
         private const val LEGACY_CONFIG_VERSION = 4
         private const val LEGACY_LANG_VERSION = 3
 
+        /** 第一个全 MiniMessage 的语言版本；从它往后只需合新键，不再做 legacy 转换。 */
+        private const val LEGACY_MINIMESSAGE_LANG_VERSION = 4
+
         @JvmField
         val CURRENT_CONFIG_VERSION: Int = 5
 
         @JvmField
-        val CURRENT_LANG_VERSION: Int = 4
+        val CURRENT_LANG_VERSION: Int = 5
     }
 }

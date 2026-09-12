@@ -12,6 +12,8 @@ dependencies {
     implementation(project(":modules:cubex-i18n"))
     implementation(project(":modules:cubex-scheduler"))
     implementation(project(":modules:cubex-database"))
+    // Vault 封装 + 入账路由：税金去向仍由 tax-account / tax-account-name 描述（PLAN §7.4）
+    implementation(project(":modules:cubex-economy"))
     // ChatInputState:聊天提问状态机与两条聊天链路的去重(PLAN §7.4)
     implementation(project(":modules:cubex-gui"))
     implementation(platform("net.kyori:adventure-bom:4.25.0"))

@@ -59,7 +59,7 @@ class EcoBalancerMigrationTest {
                 config.getStringList("debt-commands").get(0));
 
         YamlConfiguration lang = YamlConfiguration.loadConfiguration(langDir.resolve("en_US.yml").toFile());
-        assertEquals(4, lang.getInt("lang-version"));
+        assertEquals(5, lang.getInt("lang-version"));
         assertEquals("<gray>[<gold>EcoBalancer<gray>]<reset>", lang.getString("prefix"));
         assertEquals("<prefix> <green>Reloaded", lang.getString("messages.reload_success"));
         assertEquals("<gold>Header<reset>", lang.getString("messages.stats_hist_header"));
@@ -77,6 +77,33 @@ class EcoBalancerMigrationTest {
                 .filter(Files::isRegularFile)
                 .count();
         assertEquals(backupCount, backupCountAfterSecondRun);
+    }
+
+    @Test
+    void modernLanguageFileGainsNewKeysWithoutRewritingOperatorWording() throws Exception {
+        // Arrange: a v4 file is already MiniMessage, and its text may legitimately contain '&'.
+        EcoBalancer plugin = mockPlugin();
+        Path langDir = Files.createDirectories(tempDir.resolve("lang"));
+        Files.writeString(langDir.resolve("en_US.yml"), """
+                lang-version: 4
+                prefix: '<gray>[<gold>Taxes & Fees<gray>]<reset>'
+                messages:
+                  reload_success: '<prefix> <green>Reloaded'
+                """, StandardCharsets.UTF_8);
+
+        ConfigMigrator migrator = new ConfigMigrator(plugin);
+
+        // Act
+        assertTrue(migrator.migrateLanguageFile("en_US"));
+
+        // Assert
+        YamlConfiguration lang = YamlConfiguration.loadConfiguration(langDir.resolve("en_US.yml").toFile());
+        assertEquals(5, lang.getInt("lang-version"));
+        assertNotNull(lang.getString("messages.tax.economy_failed"),
+                "a key added in v5 must reach servers that were already on v4");
+        assertEquals("<gray>[<gold>Taxes & Fees<gray>]<reset>", lang.getString("prefix"),
+                "v4 text is already MiniMessage; the merge step must not run legacy conversion over it");
+        assertEquals("<prefix> <green>Reloaded", lang.getString("messages.reload_success"));
     }
 
     @Test

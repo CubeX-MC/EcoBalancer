@@ -168,6 +168,10 @@ min-balance-protection: 0 # 最低余额保护（0 = 关闭）
 
 ## 税款账本与 PlaceholderAPI
 
+> **税金去向**：`tax-account: false` = 收上来的税直接销毁；开启时转入 `tax-account-name` 指定的账户（两个键的含义未变）。
+> 经济插件**拒绝扣款**时不再静默：这一笔记为 0、不进账本，控制台留一条 WARNING；
+> 扣到了但没能转进税金账户时，该笔仍算玩家已缴（钱确实从他身上走了），同样留 WARNING 供核账。
+
 EcoBalancer 会把实际扣除的税款写入独立账本，用于 `/eb tax fund`、`/eb tax stats [player]` 和税收报告。若安装 PlaceholderAPI，插件会注册 `ecobal` expansion：
 
 - `%ecobal_tax_fund_balance%`

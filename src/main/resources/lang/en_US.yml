@@ -1,4 +1,4 @@
-lang-version: 4
+lang-version: 5
 prefix: '<gray>[<gold>EcoBalancer<gray>]<reset>'
 messages:
   # reload
@@ -302,6 +302,7 @@ messages:
     stats_summary: "<yellow><bold>Tax Stats: <white><player>\\n<gray>Latest Paid: <yellow><latest> <gray>at <white><time>\\n<gray>Total Paid: <yellow><total>"
     insufficient_balance_skipped: "<gold>Player <dark_red><player> <gold>does not have enough money to pay <yellow><deduction><gold>; skipped by debt mode."
     zero_deduction: "<gold>Player <dark_red><player> <gold>has no tax due."
+    economy_failed: "<red>Could not take <yellow><deduction><red> of tax from <dark_red><player><red>: the economy provider refused the transaction. Nothing was recorded."
     run_failed: "<red>Tax run #<operation_id> failed and was unlocked. Error: <error>"
     saved: "<green>Configuration saved to config.yml"
     reset: "<yellow>Configuration reset from config.yml"

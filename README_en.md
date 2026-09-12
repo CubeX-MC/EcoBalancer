@@ -117,6 +117,10 @@ min-balance-protection: 0 # 0 = disabled
 
 ## Tax Ledger and PlaceholderAPI
 
+> **Where tax goes**: `tax-account: false` destroys the money that was collected; when enabled it is paid into the account named by `tax-account-name` (both keys keep their meaning).
+> A **refused withdrawal is no longer silent**: that entry is recorded as 0, never reaches the ledger, and leaves a WARNING in the console.
+> Money that was taken but could not reach the tax account still counts as paid by the player (it did leave their balance) and also leaves a WARNING to reconcile against.
+
 EcoBalancer records actual tax collected into an internal ledger for `/eb tax fund`, `/eb tax stats [player]`, and tax reports. When PlaceholderAPI is installed, EcoBalancer registers the `ecobal` expansion:
 
 - `%ecobal_tax_fund_balance%`
